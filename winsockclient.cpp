@@ -1,11 +1,24 @@
 #include "winsockclient.h"
-#include "authentication.h"
 #include <QDebug>
-#include <QJsonObject>
 #include <QJsonDocument>
+#include <QJsonObject>
+#include "authentication.h"
+
+WinSockClient* WinSockClient::m_instance = nullptr;
+
+WinSockClient* WinSockClient::getInstance()
+{
+    if (m_instance == nullptr) {
+        m_instance = new WinSockClient();
+    }
+    return m_instance;
+}
 
 WinSockClient::WinSockClient(QObject *parent)
-    : QObject(parent), m_socket(INVALID_SOCKET), m_running(false), m_connected(false)
+    : QObject(parent)
+    , m_socket(INVALID_SOCKET)
+    , m_running(false)
+    , m_connected(false)
 {
     // Initialize WinSock
     WSADATA wsaData;
@@ -16,6 +29,11 @@ WinSockClient::WinSockClient(QObject *parent)
 
     // Register handlers
     registerHandler("registerResponse", handleRegisterResponse);
+    registerHandler("loginResponse", handleLoginResponse);
+
+    // Initialize signal map
+    m_signalMap["registerResponse"] = [this](const QJsonObject &data){ emit registerReceived(data); };
+    m_signalMap["loginResponse"] = [this](const QJsonObject &data){ emit loginReceived(data); };
 }
 
 WinSockClient::~WinSockClient()
@@ -60,7 +78,7 @@ void WinSockClient::connectToServer(const QString &ip, const QString &port)
     // ---------------------------------------------------------
     // GIAI ĐOẠN 2: KẾT NỐI (CONNECT)
     // ---------------------------------------------------------
-    iResult = ::connect(m_socket, ptr->ai_addr, (int)ptr->ai_addrlen);
+    iResult = ::connect(m_socket, ptr->ai_addr, (int) ptr->ai_addrlen);
     if (iResult == SOCKET_ERROR) {
         closesocket(m_socket);
         m_socket = INVALID_SOCKET;
@@ -79,25 +97,30 @@ void WinSockClient::connectToServer(const QString &ip, const QString &port)
     // ---------------------------------------------------------
     // GIAI ĐOẠN 3: TÁCH LUỒNG GỬI VÀ LUỒNG NGHE RIÊNG
     // ---------------------------------------------------------
-    
+
     // Khởi tạo luồng gửi (Send Thread)
     m_sendThread = std::thread(&WinSockClient::sendLoop, this);
-    
+
     // Khởi tạo luồng nghe (Receive Thread)
     m_recvThread = std::thread(&WinSockClient::receiveLoop, this);
 }
 
-void WinSockClient::sendMessage(const QString &message)
+int WinSockClient::sendMessage(const QJsonObject &json)
 {
-    if (!m_connected) return;
-    
+    if (!m_connected)
+        return 0;
+
+    QJsonDocument doc(json);
+    QByteArray bytes = doc.toJson(QJsonDocument::Compact);
+    std::string msg = bytes.toStdString();
+
     {
         std::lock_guard<std::mutex> lock(m_sendMutex);
-        m_sendQueue.push(message.toStdString());
+        m_sendQueue.push(msg);
     }
     m_sendCv.notify_one();
+    return (int)msg.size();
 }
-
 
 void WinSockClient::disconnectFromServer()
 {
@@ -134,7 +157,7 @@ void WinSockClient::receiveLoop()
             // Nhận được dữ liệu
             std::string msg(recvbuf, iResult);
             QString qMsg = QString::fromStdString(msg);
-            
+
             // Emit signal (Qt handles thread safety)
             emit messageReceived(qMsg);
 
@@ -143,16 +166,15 @@ void WinSockClient::receiveLoop()
             if (!doc.isNull() && doc.isObject()) {
                 QJsonObject obj = doc.object();
                 // Run processMessage in Main Thread (UI Thread) to handle UI updates
-                QMetaObject::invokeMethod(this, [this, obj](){
-                    processMessage(obj);
-                }, Qt::QueuedConnection);
+                QMetaObject::invokeMethod(
+                    this, [this, obj]() { processMessage(obj); }, Qt::QueuedConnection);
             }
-            
+
         } else if (iResult == 0) {
             // Connection closed
             if (m_running) {
-                 // Server đóng kết nối
-                 m_running = false;
+                // Server đóng kết nối
+                m_running = false;
             }
         } else {
             // Error
@@ -164,7 +186,7 @@ void WinSockClient::receiveLoop()
     }
     // Khi thoát vòng lặp, đảm bảo trạng thái cập nhật
     if (m_connected) {
-        QMetaObject::invokeMethod(this, [this](){
+        QMetaObject::invokeMethod(this, [this]() {
             setConnected(false);
             setStatus("Mất kết nối với server.");
         });
@@ -179,14 +201,15 @@ void WinSockClient::sendLoop()
         std::unique_lock<std::mutex> lock(m_sendMutex);
         m_sendCv.wait(lock, [this] { return !m_sendQueue.empty() || !m_running; });
 
-        if (!m_running) break;
+        if (!m_running)
+            break;
 
         while (!m_sendQueue.empty()) {
             std::string msg = m_sendQueue.front();
             m_sendQueue.pop();
             lock.unlock(); // Unlock để gửi, tránh giữ lock lâu
 
-            int iResult = send(m_socket, msg.c_str(), (int)msg.length(), 0);
+            int iResult = send(m_socket, msg.c_str(), (int) msg.length(), 0);
             if (iResult == SOCKET_ERROR) {
                 // Xử lý lỗi gửi
                 m_running = false;
@@ -236,4 +259,16 @@ void WinSockClient::processMessage(const QJsonObject &message)
     } else {
         qDebug() << "No handler for action:" << action;
     }
+
+    if (m_signalMap.find(action) != m_signalMap.end()) {
+        m_signalMap[action](message);
+    }
+}
+
+int WinSockClient::getUserId(){
+    return userId;
+}
+
+void WinSockClient::setUserId(int id){
+    userId = id;
 }

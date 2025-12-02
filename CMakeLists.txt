@@ -20,6 +20,8 @@ qt_add_qml_module(appClient
         Main.qml
         SOURCES authentication.h
         SOURCES authentication.cpp
+        SOURCES authUI.cpp
+        SOURCES authUI.h
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

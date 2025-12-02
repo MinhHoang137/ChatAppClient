@@ -8,9 +8,9 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
 
     QQmlApplicationEngine engine;
-    
-    WinSockClient client;
-    engine.rootContext()->setContextProperty("winSockClient", &client);
+
+
+    engine.rootContext()->setContextProperty("winSockClient", WinSockClient::getInstance());
 
     QObject::connect(
         &engine,
