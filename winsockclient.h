@@ -39,12 +39,19 @@ public:
     void setUserId(int id);
 
 
+    int getGroupId() const;
+    void setGroupId(int newGroupId);
+
+    int getTargetId() const;
+    void setTargetId(int newTargetId);
+
 signals:
     void statusMessageChanged();
     void isConnectedChanged();
     void messageReceived(const QString &message);
     void registerReceived(const QJsonObject &data);
     void loginReceived(const QJsonObject &data);
+    void nonFriendUsersReceived(const QJsonObject &data);
 
 private:
     using MessageHandler = std::function<void(const QJsonObject &)>;
@@ -78,4 +85,6 @@ private:
     std::condition_variable m_sendCv;
 
     int userId = 0;
+    int groupId = 0;
+    int targetId = 0;
 };

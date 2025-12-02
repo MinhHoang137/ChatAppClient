@@ -1,20 +1,26 @@
 #include "authentication.h"
-#include <QDebug>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QString>
-#include <winsock2.h>
 #include "winsockclient.h"
+#include <QDebug>
+#include <QJsonObject>
 
-QJsonObject registerUser(QString username, QString password)
+AuthenticationHandler::AuthenticationHandler(QObject *parent) : QObject(parent) {}
+
+void AuthenticationHandler::registerUser(QString username, QString password)
 {
-    // Implementation of register function
-    return {{"action", "register"}, {"username", username}, {"password", password}};
+    QJsonObject request;
+    request["action"] = "register";
+    request["username"] = username;
+    request["password"] = password;
+    WinSockClient::getInstance()->sendMessage(request);
 }
 
-int sendRegisterRequest(SOCKET socket, QString username, QString password)
+void AuthenticationHandler::loginUser(QString username, QString password)
 {
-    return WinSockClient::getInstance()->sendMessage(registerUser(username, password));
+    QJsonObject request;
+    request["action"] = "login";
+    request["username"] = username;
+    request["password"] = password;
+    WinSockClient::getInstance()->sendMessage(request);
 }
 
 void handleRegisterResponse(const QJsonObject &response)
@@ -28,17 +34,6 @@ void handleRegisterResponse(const QJsonObject &response)
     } else {
         qDebug() << "Registration failed:" << message;
     }
-}
-
-QJsonObject loginUser(QString username, QString password)
-{
-    // Implementation of login function
-    return {{"action", "login"}, {"username", username}, {"password", password}};
-}
-
-int sendLoginRequest(SOCKET socket, QString username, QString password)
-{
-    return WinSockClient::getInstance()->sendMessage(loginUser(username, password));
 }
 
 void handleLoginResponse(const QJsonObject &response)

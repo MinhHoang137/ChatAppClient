@@ -1,186 +1,204 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Client
 
 Window {
-    width: 400
-    height: 600
+    width: 1200
+    height: 800
     visible: true
     title: qsTr("Chat Client")
 
-    Dialog {
-        id: messageDialog
-        anchors.centerIn: parent
-        title: "Thông báo"
-        standardButtons: Dialog.Ok
-        property string text: ""
-        
-        contentItem: Label {
-            text: messageDialog.text
-            wrapMode: Text.WordWrap
-        }
+    AuthenticationHandler {
+        id: authHandler
     }
 
-    Connections {
-        target: winSockClient
-        
-        function onRegisterReceived(data) {
-            console.log("Register received:", JSON.stringify(data))
-            messageDialog.title = data.success ? "Đăng ký thành công" : "Đăng ký thất bại"
-            messageDialog.text = data.message
-            messageDialog.open()
-        }
-
-        function onLoginReceived(data) {
-            console.log("Login received:", JSON.stringify(data))
-            messageDialog.title = data.success ? "Đăng nhập thành công" : "Đăng nhập thất bại"
-            messageDialog.text = data.message
-            messageDialog.open()
-        }
-    }
-
-    ColumnLayout {
+    StackView {
+        id: stackView
         anchors.fill: parent
-        anchors.margins: 20
-        spacing: 15
+        initialItem: authPage
+    }
 
-        // --- Server Connection Section ---
-        GroupBox {
-            title: "Cấu hình Server"
-            Layout.fillWidth: true
-            
+    Component {
+        id: homePage
+        Home {
+        }
+    }
+
+    Component {
+        id: authPage
+        Page {
+            Dialog {
+                id: messageDialog
+                anchors.centerIn: parent
+                title: "Thông báo"
+                standardButtons: Dialog.Ok
+                property string text: ""
+                
+                contentItem: Label {
+                    text: messageDialog.text
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            Connections {
+                target: winSockClient
+                
+                function onRegisterReceived(data) {
+                    console.log("Register received:", JSON.stringify(data))
+                    messageDialog.title = data.success ? "Đăng ký thành công" : "Đăng ký thất bại"
+                    messageDialog.text = data.message
+                    messageDialog.open()
+                }
+
+                function onLoginReceived(data) {
+                    console.log("Login received:", JSON.stringify(data))
+                    if (data.success) {
+                        stackView.push(homePage, {username: loginUsername.text})
+                    } else {
+                        messageDialog.title = "Đăng nhập thất bại"
+                        messageDialog.text = data.message
+                        messageDialog.open()
+                    }
+                }
+            }
+
             ColumnLayout {
-                width: parent.width
-                
-                RowLayout {
+                anchors.fill: parent
+                anchors.margins: 20
+                spacing: 15
+
+                // --- Server Connection Section ---
+                GroupBox {
+                    title: "Cấu hình Server"
                     Layout.fillWidth: true
-                    TextField {
-                        id: ipField
-                        placeholderText: "IP Address"
-                        text: "127.0.0.1"
-                        Layout.fillWidth: true
-                    }
-                    TextField {
-                        id: portField
-                        placeholderText: "Port"
-                        text: "8080"
-                        Layout.preferredWidth: 80
-                    }
-                }
-
-                Button {
-                    text: winSockClient.isConnected ? "Ngắt kết nối" : "Kết nối"
-                    Layout.fillWidth: true
-                    highlighted: !winSockClient.isConnected
-                    onClicked: {
-                        if (winSockClient.isConnected) {
-                            winSockClient.disconnectFromServer()
-                        } else {
-                            winSockClient.connectToServer(ipField.text, portField.text)
-                        }
-                    }
-                }
-                
-                Label {
-                    text: winSockClient.statusMessage
-                    color: winSockClient.isConnected ? "green" : "red"
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    elide: Text.ElideRight
-                }
-            }
-        }
-
-        // --- Auth Section ---
-        TabBar {
-            id: authTabBar
-            Layout.fillWidth: true
-            enabled: winSockClient.isConnected
-            
-            TabButton { text: "Đăng nhập" }
-            TabButton { text: "Đăng ký" }
-        }
-
-        StackLayout {
-            currentIndex: authTabBar.currentIndex
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            enabled: winSockClient.isConnected
-
-            // Login Tab
-            Item {
-                ColumnLayout {
-                    anchors.centerIn: parent
-                    width: parent.width
-                    spacing: 10
-
-                    TextField {
-                        id: loginUsername
-                        placeholderText: "Username"
-                        Layout.fillWidth: true
-                    }
-                    TextField {
-                        id: loginPassword
-                        placeholderText: "Password"
-                        echoMode: TextInput.Password
-                        Layout.fillWidth: true
-                    }
-                    Button {
-                        text: "Đăng nhập"
-                        Layout.fillWidth: true
-                        highlighted: true
-                        onClicked: {
-                            winSockClient.sendMessage({
-                                "action": "login",
-                                "username": loginUsername.text,
-                                "password": loginPassword.text
-                            })
-                        }
-                    }
-                }
-            }
-
-            // Register Tab
-            Item {
-                ColumnLayout {
-                    anchors.centerIn: parent
-                    width: parent.width
-                    spacing: 10
-
-                    TextField {
-                        id: regUsername
-                        placeholderText: "Username"
-                        Layout.fillWidth: true
-                    }
-                    TextField {
-                        id: regPassword
-                        placeholderText: "Password"
-                        echoMode: TextInput.Password
-                        Layout.fillWidth: true
-                    }
-                    TextField {
-                        id: regConfirmPassword
-                        placeholderText: "Confirm Password"
-                        echoMode: TextInput.Password
-                        Layout.fillWidth: true
-                    }
-                    Button {
-                        text: "Đăng ký"
-                        Layout.fillWidth: true
-                        highlighted: true
-                        onClicked: {
-                            if (regPassword.text !== regConfirmPassword.text) {
-                                messageDialog.title = "Lỗi"
-                                messageDialog.text = "Mật khẩu xác nhận không khớp!"
-                                messageDialog.open()
-                                return
+                    
+                    ColumnLayout {
+                        width: parent.width
+                        
+                        RowLayout {
+                            Layout.fillWidth: true
+                            TextField {
+                                id: ipField
+                                placeholderText: "IP Address"
+                                text: "127.0.0.1"
+                                Layout.fillWidth: true
                             }
-                            
-                            winSockClient.sendMessage({
-                                "action": "register",
-                                "username": regUsername.text,
-                                "password": regPassword.text
-                            })
+                            TextField {
+                                id: portField
+                                placeholderText: "Port"
+                                text: "8080"
+                                Layout.preferredWidth: 80
+                            }
+                        }
+
+                        Button {
+                            text: winSockClient.isConnected ? "Ngắt kết nối" : "Kết nối"
+                            Layout.fillWidth: true
+                            highlighted: !winSockClient.isConnected
+                            onClicked: {
+                                if (winSockClient.isConnected) {
+                                    winSockClient.disconnectFromServer()
+                                } else {
+                                    winSockClient.connectToServer(ipField.text, portField.text)
+                                }
+                            }
+                        }
+                        
+                        Label {
+                            text: winSockClient.statusMessage
+                            color: winSockClient.isConnected ? "green" : "red"
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignHCenter
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+
+                // --- Auth Section ---
+                TabBar {
+                    id: authTabBar
+                    Layout.fillWidth: true
+                    enabled: winSockClient.isConnected
+                    
+                    TabButton { text: "Đăng nhập" }
+                    TabButton { text: "Đăng ký" }
+                }
+
+                StackLayout {
+                    currentIndex: authTabBar.currentIndex
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    enabled: winSockClient.isConnected
+
+                    // Login Tab
+                    Item {
+                        ColumnLayout {
+                            anchors.centerIn: parent
+                            width: parent.width
+                            spacing: 10
+
+                            TextField {
+                                id: loginUsername
+                                placeholderText: "Username"
+                                Layout.fillWidth: true
+                            }
+                            TextField {
+                                id: loginPassword
+                                placeholderText: "Password"
+                                echoMode: TextInput.Password
+                                Layout.fillWidth: true
+                            }
+                            Button {
+                                text: "Đăng nhập"
+                                Layout.fillWidth: true
+                                highlighted: true
+                                onClicked: {
+                                    authHandler.loginUser(loginUsername.text, loginPassword.text)
+                                }
+                            }
+                        }
+                    }
+
+                    // Register Tab
+                    Item {
+                        ColumnLayout {
+                            anchors.centerIn: parent
+                            width: parent.width
+                            spacing: 10
+
+                            TextField {
+                                id: regUsername
+                                placeholderText: "Username"
+                                Layout.fillWidth: true
+                            }
+                            TextField {
+                                id: regPassword
+                                placeholderText: "Password"
+                                echoMode: TextInput.Password
+                                Layout.fillWidth: true
+                            }
+                            TextField {
+                                id: regConfirmPassword
+                                placeholderText: "Confirm Password"
+                                echoMode: TextInput.Password
+                                Layout.fillWidth: true
+                            }
+                            Button {
+                                text: "Đăng ký"
+                                Layout.fillWidth: true
+                                highlighted: true
+                                onClicked: {
+                                    if (regPassword.text !== regConfirmPassword.text) {
+                                        messageDialog.title = "Lỗi"
+                                        messageDialog.text = "Mật khẩu xác nhận không khớp!"
+                                        messageDialog.open()
+                                        return
+                                    }
+                                    
+                                    authHandler.registerUser(regUsername.text, regPassword.text)
+                                }
+                            }
                         }
                     }
                 }

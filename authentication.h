@@ -1,15 +1,21 @@
 #pragma once
 
+#include <QObject>
 #include <QJsonObject>
 #include <QString>
+#include <QQmlEngine>
 
-#ifdef _WIN32
-#include <winsock2.h>
-#endif
-
-QJsonObject registerUser(QString username, QString password);
-int sendRegisterRequest(SOCKET socket, QString username, QString password);
 void handleRegisterResponse(const QJsonObject &response);
-int sendLoginRequest(SOCKET socket, QString username, QString password);
-QJsonObject loginUser(QString username, QString password);
 void handleLoginResponse(const QJsonObject &response);
+
+class AuthenticationHandler : public QObject
+{
+    Q_OBJECT
+    QML_ELEMENT
+
+public:
+    explicit AuthenticationHandler(QObject *parent = nullptr);
+
+    Q_INVOKABLE void registerUser(QString username, QString password);
+    Q_INVOKABLE void loginUser(QString username, QString password);
+};

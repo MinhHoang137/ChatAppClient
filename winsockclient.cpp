@@ -34,6 +34,29 @@ WinSockClient::WinSockClient(QObject *parent)
     // Initialize signal map
     m_signalMap["registerResponse"] = [this](const QJsonObject &data){ emit registerReceived(data); };
     m_signalMap["loginResponse"] = [this](const QJsonObject &data){ emit loginReceived(data); };
+    m_signalMap["getNonFriendUsers"] = [this](const QJsonObject &data){ emit nonFriendUsersReceived(data); };
+}
+
+int WinSockClient::getTargetId() const
+{
+    return targetId;
+}
+
+void WinSockClient::setTargetId(int newTargetId)
+{
+    targetId = newTargetId;
+    groupId = 0;
+}
+
+int WinSockClient::getGroupId() const
+{
+    return groupId;
+}
+
+void WinSockClient::setGroupId(int newGroupId)
+{
+    groupId = newGroupId;
+    targetId = 0;
 }
 
 WinSockClient::~WinSockClient()
@@ -148,8 +171,8 @@ void WinSockClient::receiveLoop()
 {
     // LUỒNG NGHE (RECEIVE THREAD)
     // Chuyên trách việc nhận dữ liệu từ server
-    char recvbuf[512];
-    int recvbuflen = 512;
+    char recvbuf[8192];
+    int recvbuflen = 8192;
 
     while (m_running) {
         int iResult = recv(m_socket, recvbuf, recvbuflen, 0);
