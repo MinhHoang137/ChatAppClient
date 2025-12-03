@@ -2,6 +2,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include "winsockclient.h"
+#include "friendhandlers.h"
 
 int main(int argc, char *argv[])
 {
@@ -11,6 +12,7 @@ int main(int argc, char *argv[])
 
 
     engine.rootContext()->setContextProperty("winSockClient", WinSockClient::getInstance());
+    engine.rootContext()->setContextProperty("friendHandlers", FriendHandlers::getInstance());
 
     QObject::connect(
         &engine,

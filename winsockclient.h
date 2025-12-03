@@ -16,49 +16,84 @@
 #include <ws2tcpip.h>
 #endif
 
+/**
+ * @brief Lớp quản lý kết nối mạng (Socket Client).
+ * Chịu trách nhiệm kết nối tới Server, gửi/nhận dữ liệu JSON, và quản lý luồng gửi/nhận.
+ * Thiết kế theo mẫu Singleton.
+ */
 class WinSockClient : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
     Q_PROPERTY(bool isConnected READ isConnected NOTIFY isConnectedChanged)
+    Q_PROPERTY(int userId READ getUserId WRITE setUserId NOTIFY userIdChanged)
 
 public:
+    /**
+     * @brief Lấy instance duy nhất của WinSockClient.
+     */
     static WinSockClient* getInstance();
     WinSockClient(const WinSockClient&) = delete;
     WinSockClient& operator=(const WinSockClient&) = delete;
 
     ~WinSockClient();
 
+    /**
+     * @brief Kết nối tới Server.
+     * @param ip Địa chỉ IP của Server.
+     * @param port Cổng của Server.
+     */
     Q_INVOKABLE void connectToServer(const QString &ip, const QString &port);
+
+    /**
+     * @brief Gửi một gói tin JSON tới Server.
+     * @param message Đối tượng JSON cần gửi.
+     * @return Số byte đã gửi (hoặc kích thước hàng đợi).
+     */
     Q_INVOKABLE int sendMessage(const QJsonObject &message);
+
+    /**
+     * @brief Ngắt kết nối khỏi Server.
+     */
     Q_INVOKABLE void disconnectFromServer();
+
 
     QString statusMessage() const;
     bool isConnected() const;
-    int getUserId();
-    void setUserId(int id);
+    Q_INVOKABLE int getUserId() const;
+    Q_INVOKABLE void setUserId(int id);
 
 
-    int getGroupId() const;
-    void setGroupId(int newGroupId);
+    Q_INVOKABLE int getGroupId() const;
+    Q_INVOKABLE void setGroupId(int newGroupId);
 
-    int getTargetId() const;
-    void setTargetId(int newTargetId);
+    Q_INVOKABLE int getTargetId() const;
+    Q_INVOKABLE void setTargetId(int newTargetId);
 
 signals:
     void statusMessageChanged();
     void isConnectedChanged();
+    void userIdChanged();
+    // Signal phát ra khi nhận được bất kỳ tin nhắn nào (dạng chuỗi thô)
     void messageReceived(const QString &message);
+    // Signal phát ra khi nhận phản hồi đăng ký
     void registerReceived(const QJsonObject &data);
+    // Signal phát ra khi nhận phản hồi đăng nhập
     void loginReceived(const QJsonObject &data);
+    // Signal phát ra khi nhận danh sách người lạ
     void nonFriendUsersReceived(const QJsonObject &data);
 
 private:
     using MessageHandler = std::function<void(const QJsonObject &)>;
+    
+    // Đăng ký hàm xử lý cho một action cụ thể
     void registerHandler(const QString &action, MessageHandler handler);
+    // Xử lý gói tin JSON nhận được, định tuyến tới handler phù hợp
     void processMessage(const QJsonObject &message);
 
+    // Vòng lặp nhận dữ liệu (chạy trên thread riêng)
     void receiveLoop();
+    // Vòng lặp gửi dữ liệu (chạy trên thread riêng)
     void sendLoop();
     void cleanup();
     void setStatus(const QString &msg);
@@ -72,19 +107,21 @@ private:
     std::atomic<bool> m_connected;
     QString m_statusMessage;
 
+    // Map ánh xạ từ tên action sang hàm xử lý (callback)
     std::map<QString, MessageHandler> m_handlers;
+    // Map ánh xạ từ tên action sang signal (để emit signal tương ứng)
     std::map<QString, std::function<void(const QJsonObject&)>> m_signalMap;
 
     // Threading
     std::thread m_recvThread;
     std::thread m_sendThread;
 
-    // Send queue
+    // Send queue (Hàng đợi gửi tin nhắn để đảm bảo thread-safe)
     std::queue<std::string> m_sendQueue;
     std::mutex m_sendMutex;
     std::condition_variable m_sendCv;
 
     int userId = 0;
     int groupId = 0;
-    int targetId = 0;
+    int targetId = 0; // ID của người dùng/nhóm đang chat cùng
 };

@@ -5,10 +5,8 @@ import Client
 
 Page {
     property string username: ""
-
-    FriendHandlers {
-        id: friendHandlers
-    }
+    property string selectedUserName: "Chưa chọn"
+    property int selectedUserStatus: -1 // -1: none, 0: offline, 1: online
 
     header: ToolBar {
         background: Rectangle {
@@ -100,6 +98,16 @@ Page {
                         delegate: ItemDelegate {
                             width: parent.width
                             height: 50
+                            highlighted: ListView.isCurrentItem
+                            onClicked: {
+                                ListView.view.currentIndex = index
+                                winSockClient.setTargetId(modelData.userID)
+                                selectedUserName = modelData.username
+                                selectedUserStatus = modelData.status
+                                friendHandlers.loadMessages(modelData.userID)
+                                console.log("Target ID set to:", modelData.userID)
+                            }
+
                             RowLayout {
                                 anchors.fill: parent
                                 anchors.margins: 10
@@ -187,10 +195,10 @@ Page {
                         
                         Rectangle {
                             width: 40; height: 40; radius: 20
-                            color: "#0078d4"
+                            color: selectedUserStatus === 1 ? "#4CAF50" : "#cccccc"
                             Text { 
                                 anchors.centerIn: parent
-                                text: "A"
+                                text: selectedUserName && selectedUserName !== "Chưa chọn" ? selectedUserName.charAt(0).toUpperCase() : "?"
                                 color: "white"
                                 font.bold: true
                             }
@@ -199,15 +207,15 @@ Page {
                         ColumnLayout {
                             spacing: 0
                             Label {
-                                text: "Tên người hoặc nhóm"
+                                text: selectedUserName
                                 font.bold: true
                                 font.pixelSize: 16
                             }
                             Label {
-                                text: "Trạng thái: Online"
+                                text: selectedUserStatus === 1 ? "Trực tuyến" : (selectedUserStatus === 0 ? "Ngoại tuyến" : "")
                                 font.pixelSize: 12
                                 color: "gray"
-                                visible: contactTabBar.currentIndex !== 2
+                                visible: contactTabBar.currentIndex !== 2 && selectedUserStatus !== -1
                             }
                         }
                         Item { Layout.fillWidth: true }
@@ -221,11 +229,40 @@ Page {
                     color: "#f3f2f1"
                     
                     ListView {
+                        id: messageListView
                         anchors.fill: parent
                         anchors.margins: 10
                         clip: true
-                        model: 0
+                        model: friendHandlers.messages
                         spacing: 10
+                        
+                        delegate: Item {
+                            width: parent.width
+                            height: msgRect.height
+
+                            Rectangle {
+                                id: msgRect
+                                color: modelData.senderID === winSockClient.userId ? "#0078d4" : "white"
+                                radius: 10
+                                width: Math.min(msgText.implicitWidth + 24, parent.width * 0.7)
+                                height: msgText.implicitHeight + 20
+                                anchors.right: modelData.senderID === winSockClient.userId ? parent.right : undefined
+                                anchors.left: modelData.senderID !== winSockClient.userId ? parent.left : undefined
+                                border.color: "#e1dfdd"
+                                border.width: modelData.senderID !== winSockClient.userId ? 1 : 0
+
+                                Text {
+                                    id: msgText
+                                    anchors.centerIn: parent
+                                    text: modelData.content
+                                    color: modelData.senderID === winSockClient.userId ? "white" : "black"
+                                    width: parent.width - 24
+                                    wrapMode: Text.Wrap
+                                }
+                            }
+                        }
+
+                        onCountChanged: positionViewAtEnd()
                         
                         Label {
                             anchors.centerIn: parent
@@ -251,6 +288,7 @@ Page {
                         spacing: 10
 
                         TextField {
+                            id: messageInput
                             placeholderText: "Nhập tin nhắn..."
                             Layout.fillWidth: true
                             Layout.preferredHeight: 40
@@ -260,8 +298,10 @@ Page {
                                 radius: 20
                                 border.color: parent.activeFocus ? "#0078d4" : "transparent"
                             }
+                            onAccepted: sendBtn.clicked()
                         }
                         Button {
+                            id: sendBtn
                             text: "Gửi"
                             highlighted: true
                             Layout.preferredHeight: 40
@@ -274,6 +314,12 @@ Page {
                                 color: "white"
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
+                            }
+                            onClicked: {
+                                if (messageInput.text.trim() !== "") {
+                                    friendHandlers.sendMessage(messageInput.text)
+                                    messageInput.text = ""
+                                }
                             }
                         }
                     }
@@ -304,19 +350,28 @@ Page {
                 Rectangle {
                     Layout.alignment: Qt.AlignHCenter
                     width: 100; height: 100; radius: 50
-                    color: "#cccccc"
+                    color: selectedUserStatus === 1 ? "#4CAF50" : "#cccccc"
                     Text {
                         anchors.centerIn: parent
-                        text: "Avatar"
-                        color: "#666666"
+                        text: selectedUserName && selectedUserName !== "Chưa chọn" ? selectedUserName.charAt(0).toUpperCase() : "?"
+                        color: "white"
+                        font.pixelSize: 40
+                        font.bold: true
                     }
                 }
 
                 Label {
-                    text: "Tên hiển thị"
+                    text: selectedUserName
                     font.bold: true
                     font.pixelSize: 16
                     Layout.alignment: Qt.AlignHCenter
+                }
+
+                Label {
+                    text: selectedUserStatus === 1 ? "Trực tuyến" : (selectedUserStatus === 0 ? "Ngoại tuyến" : "")
+                    color: "gray"
+                    Layout.alignment: Qt.AlignHCenter
+                    visible: selectedUserStatus !== -1
                 }
 
                 Rectangle {

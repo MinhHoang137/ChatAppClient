@@ -5,6 +5,7 @@
 
 AuthenticationHandler::AuthenticationHandler(QObject *parent) : QObject(parent) {}
 
+// Gửi yêu cầu đăng ký
 void AuthenticationHandler::registerUser(QString username, QString password)
 {
     QJsonObject request;
@@ -14,6 +15,7 @@ void AuthenticationHandler::registerUser(QString username, QString password)
     WinSockClient::getInstance()->sendMessage(request);
 }
 
+// Gửi yêu cầu đăng nhập
 void AuthenticationHandler::loginUser(QString username, QString password)
 {
     QJsonObject request;
@@ -23,6 +25,7 @@ void AuthenticationHandler::loginUser(QString username, QString password)
     WinSockClient::getInstance()->sendMessage(request);
 }
 
+// Xử lý phản hồi đăng ký từ Server
 void handleRegisterResponse(const QJsonObject &response)
 {
     bool success = response["success"].toBool();
@@ -30,12 +33,14 @@ void handleRegisterResponse(const QJsonObject &response)
     int userId = response["userId"].toInt();
     if (success) {
         qDebug() << "Registration successful. User ID:" << userId;
+        // Lưu User ID vào WinSockClient để sử dụng sau này
         WinSockClient::getInstance()->setUserId(userId);
     } else {
         qDebug() << "Registration failed:" << message;
     }
 }
 
+// Xử lý phản hồi đăng nhập từ Server
 void handleLoginResponse(const QJsonObject &response)
 {
     bool success = response["success"].toBool();
@@ -44,6 +49,7 @@ void handleLoginResponse(const QJsonObject &response)
 
     if (success) {
         qDebug() << "Login successful. User ID:" << userId;
+        // Lưu User ID vào WinSockClient để sử dụng sau này
         WinSockClient::getInstance()->setUserId(userId);
     } else {
         qDebug() << "Login failed:" << message;
