@@ -84,6 +84,13 @@ public:
      * @param userID ID của người dùng mà ta muốn lấy danh sách bạn bè.
      */
     Q_INVOKABLE void sendGetFriendListRequest(int userID);
+
+    /**
+     * @brief Gửi yêu cầu hủy kết bạn với một người dùng khác.
+     * @param toUserID ID của người dùng mà ta muốn hủy kết bạn.
+     */
+    Q_INVOKABLE void sendUnfriendRequest(int toUserID);
+
     // Getter cho property nonFriendUsers
     QVariantList nonFriendUsers() const;
     // Getter cho property friendRequests

@@ -487,24 +487,25 @@ Page {
                         radius: 4
                         color: parent.down ? "#ffe6e6" : "transparent"
                     }
+                    onClicked: {
+                        friendHandlers.sendUnfriendRequest(winSockClient.getTargetId())
+                        // Reset selection
+                        selectedUserName = "Chưa chọn"
+                        selectedUserStatus = -1
+                        winSockClient.setTargetId(0)
+                    }
                 }
 
                 Button {
                     text: friendHandlers.currentFriendStatus === 0 ? "Đã gửi yêu cầu" : 
                           (friendHandlers.currentFriendStatus === 1 ? "Đã là bạn" : 
-                          (friendHandlers.currentFriendStatus === 2 ? "Chấp nhận" : "Kết bạn"))
+                          (friendHandlers.currentFriendStatus === 2 ? "Đã nhận yêu cầu" : "Kết bạn"))
                     Layout.fillWidth: true
                     visible: contactTabBar.currentIndex === 1 // Tab Người lạ
-                    enabled: friendHandlers.currentFriendStatus === -1 || friendHandlers.currentFriendStatus === 2
+                    enabled: friendHandlers.currentFriendStatus === -1
                     highlighted: true
                     onClicked: {
-                        if (friendHandlers.currentFriendStatus === 2) {
-                            friendHandlers.sendAcceptFriendRequest(winSockClient.getTargetId())
-                            // Optimistic update
-                            // Note: Ideally we should update currentFriendStatus to 1 here, but let's wait for server or refresh
-                        } else {
-                            friendHandlers.sendFriendRequest(winSockClient.getTargetId())
-                        }
+                        friendHandlers.sendFriendRequest(winSockClient.getTargetId())
                     }
                 }
 

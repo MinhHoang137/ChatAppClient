@@ -220,6 +220,32 @@ void FriendHandlers::onNonFriendUsersReceived(const QJsonObject &data)
     }
 }
 
+void FriendHandlers::sendUnfriendRequest(int toUserID)
+{
+    int fromUserID = WinSockClient::getInstance()->getUserId();
+    QJsonObject request;
+    request["action"] = "unfriend";
+    request["fromUserID"] = fromUserID;
+    request["toUserID"] = toUserID;
+    WinSockClient::getInstance()->sendMessage(request);
+
+    // Optimistic update: Remove from friends list locally
+    for (int i = 0; i < m_friends.size(); ++i) {
+        QVariantMap map = m_friends[i].toMap();
+        if (map["userID"].toInt() == toUserID) {
+            m_friends.removeAt(i);
+            emit friendsChanged();
+            break;
+        }
+    }
+
+    // Optimistic update for currentFriendStatus
+    if (WinSockClient::getInstance()->getTargetId() == toUserID) {
+        m_currentFriendStatus = -1; // -1: Not friends
+        emit currentFriendStatusChanged();
+    }
+}
+
 // Xử lý khi nhận danh sách yêu cầu kết bạn
 void FriendHandlers::onFriendRequestsReceived(const QJsonObject &data)
 {
