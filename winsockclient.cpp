@@ -38,6 +38,9 @@ WinSockClient::WinSockClient(QObject *parent)
     m_signalMap["registerResponse"] = [this](const QJsonObject &data){ emit registerReceived(data); };
     m_signalMap["loginResponse"] = [this](const QJsonObject &data){ emit loginReceived(data); };
     m_signalMap["getNonFriendUsers"] = [this](const QJsonObject &data){ emit nonFriendUsersReceived(data); };
+    m_signalMap["getFriendRequests"] = [this](const QJsonObject &data){ emit friendRequestsReceived(data); };
+    m_signalMap["getFriendsList"] = [this](const QJsonObject &data){ emit friendsListReceived(data); };
+    m_signalMap["queryFriendStatus"] = [this](const QJsonObject &data){ emit friendStatusReceived(data); };
     
     // Các action liên quan đến tin nhắn đều được chuyển về FriendHandlers xử lý
     m_signalMap["receiveMessage"] = [](const QJsonObject &data){ emit FriendHandlers::getInstance()->messageReceived(data); };

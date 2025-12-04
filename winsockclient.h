@@ -80,6 +80,12 @@ signals:
     void loginReceived(const QJsonObject &data);
     // Signal phát ra khi nhận danh sách người lạ
     void nonFriendUsersReceived(const QJsonObject &data);
+    // Signal phát ra khi nhận danh sách yêu cầu kết bạn
+    void friendRequestsReceived(const QJsonObject &data);
+    // Signal phát ra khi nhận danh sách bạn bè
+    void friendsListReceived(const QJsonObject &data);
+    // Signal phát ra khi nhận trạng thái bạn bè
+    void friendStatusReceived(const QJsonObject &data);
 
 private:
     using MessageHandler = std::function<void(const QJsonObject &)>;

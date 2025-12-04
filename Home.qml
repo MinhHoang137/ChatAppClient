@@ -48,11 +48,22 @@ Page {
                     
                     TabButton { text: "Bạn bè"; width: implicitWidth }
                     TabButton { text: "Người lạ"; width: implicitWidth }
+                    TabButton { text: "Yêu cầu"; width: implicitWidth }
                     TabButton { text: "Nhóm"; width: implicitWidth }
 
+                    Component.onCompleted: {
+                        if (currentIndex === 0) {
+                            friendHandlers.fetchFriends()
+                        }
+                    }
+
                     onCurrentIndexChanged: {
-                        if (currentIndex === 1) {
+                        if (currentIndex === 0) {
+                            friendHandlers.fetchFriends()
+                        } else if (currentIndex === 1) {
                             friendHandlers.fetchNonFriendUsers()
+                        } else if (currentIndex === 2) {
+                            friendHandlers.fetchFriendRequests()
                         }
                     }
                 }
@@ -64,13 +75,21 @@ Page {
 
                     // Tab 1: Bạn bè
                     ListView {
-                        model: 10
+                        model: friendHandlers.friends
                         clip: true
                         delegate: ItemDelegate {
                             width: parent.width
                             height: 50
                             highlighted: ListView.isCurrentItem
-                            onClicked: parent.ListView.view.currentIndex = index
+                            onClicked: {
+                                ListView.view.currentIndex = index
+                                winSockClient.setTargetId(modelData.userID)
+                                selectedUserName = modelData.username
+                                selectedUserStatus = modelData.status
+                                friendHandlers.loadMessages(modelData.userID)
+                                friendHandlers.sendQueryFriendStatus(modelData.userID)
+                                console.log("Target ID set to:", modelData.userID)
+                            }
                             
                             RowLayout {
                                 anchors.fill: parent
@@ -78,13 +97,27 @@ Page {
                                 spacing: 10
                                 Rectangle {
                                     width: 32; height: 32; radius: 16
-                                    color: "#cccccc"
-                                    Text { anchors.centerIn: parent; text: "B" }
+                                    color: modelData.status === 1 ? "#4CAF50" : "#cccccc"
+                                    Text { 
+                                        anchors.centerIn: parent 
+                                        text: modelData.username ? modelData.username.charAt(0).toUpperCase() : "?" 
+                                        color: "white"
+                                    }
                                 }
-                                Label { 
-                                    text: "Bạn bè " + (index + 1)
+                                ColumnLayout {
                                     Layout.fillWidth: true
-                                    elide: Text.ElideRight
+                                    spacing: 0
+                                    Label { 
+                                        text: modelData.username
+                                        font.bold: true
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
+                                    Label {
+                                        text: modelData.status === 1 ? "Trực tuyến" : "Ngoại tuyến"
+                                        font.pixelSize: 12
+                                        color: "gray"
+                                    }
                                 }
                             }
                         }
@@ -105,6 +138,7 @@ Page {
                                 selectedUserName = modelData.username
                                 selectedUserStatus = modelData.status
                                 friendHandlers.loadMessages(modelData.userID)
+                                friendHandlers.sendQueryFriendStatus(modelData.userID)
                                 console.log("Target ID set to:", modelData.userID)
                             }
 
@@ -141,7 +175,56 @@ Page {
                         ScrollIndicator.vertical: ScrollIndicator { }
                     }
 
-                    // Tab 3: Nhóm
+                    // Tab 3: Yêu cầu kết bạn
+                    ListView {
+                        model: friendHandlers.friendRequests
+                        clip: true
+                        delegate: ItemDelegate {
+                            width: parent.width
+                            height: 50
+                            highlighted: ListView.isCurrentItem
+                            
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.margins: 10
+                                spacing: 10
+                                Rectangle {
+                                    width: 32; height: 32; radius: 16
+                                    color: modelData.status === 1 ? "#4CAF50" : "#cccccc"
+                                    Text { 
+                                        anchors.centerIn: parent 
+                                        text: modelData.username ? modelData.username.charAt(0).toUpperCase() : "?" 
+                                        color: "white"
+                                    }
+                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 0
+                                    Label { 
+                                        text: modelData.username
+                                        font.bold: true
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
+                                    Label {
+                                        text: "Yêu cầu kết bạn"
+                                        font.pixelSize: 12
+                                        color: "gray"
+                                    }
+                                }
+                                Button {
+                                    text: "Chấp nhận"
+                                    onClicked: {
+                                        friendHandlers.sendAcceptFriendRequest(modelData.userID)
+                                        console.log("Accepted friend request from:", modelData.userID)
+                                    }
+                                }
+                            }
+                        }
+                        ScrollIndicator.vertical: ScrollIndicator { }
+                    }
+
+                    // Tab 4: Nhóm
                     ListView {
                         model: 3
                         clip: true
@@ -331,6 +414,7 @@ Page {
         Rectangle {
             Layout.preferredWidth: 250
             Layout.fillHeight: true
+            visible: contactTabBar.currentIndex !== 2 // Hide in Requests tab
             color: "white"
             border.color: "#e1dfdd"
             border.width: 1
@@ -406,10 +490,22 @@ Page {
                 }
 
                 Button {
-                    text: "Thêm bạn"
+                    text: friendHandlers.currentFriendStatus === 0 ? "Đã gửi yêu cầu" : 
+                          (friendHandlers.currentFriendStatus === 1 ? "Đã là bạn" : 
+                          (friendHandlers.currentFriendStatus === 2 ? "Chấp nhận" : "Kết bạn"))
                     Layout.fillWidth: true
-                    visible: contactTabBar.currentIndex === 1
+                    visible: contactTabBar.currentIndex === 1 // Tab Người lạ
+                    enabled: friendHandlers.currentFriendStatus === -1 || friendHandlers.currentFriendStatus === 2
                     highlighted: true
+                    onClicked: {
+                        if (friendHandlers.currentFriendStatus === 2) {
+                            friendHandlers.sendAcceptFriendRequest(winSockClient.getTargetId())
+                            // Optimistic update
+                            // Note: Ideally we should update currentFriendStatus to 1 here, but let's wait for server or refresh
+                        } else {
+                            friendHandlers.sendFriendRequest(winSockClient.getTargetId())
+                        }
+                    }
                 }
 
                 Button {
