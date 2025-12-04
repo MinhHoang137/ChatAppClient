@@ -190,9 +190,6 @@ void WinSockClient::receiveLoop()
             std::string msg(recvbuf, iResult);
             QString qMsg = QString::fromStdString(msg);
 
-            // Emit signal (Qt handles thread safety)
-            emit messageReceived(qMsg);
-
             // Parse JSON ngay trong luồng nhận
             QJsonDocument doc = QJsonDocument::fromJson(qMsg.toUtf8());
             if (!doc.isNull() && doc.isObject()) {

@@ -74,8 +74,6 @@ signals:
     void statusMessageChanged();
     void isConnectedChanged();
     void userIdChanged();
-    // Signal phát ra khi nhận được bất kỳ tin nhắn nào (dạng chuỗi thô)
-    void messageReceived(const QString &message);
     // Signal phát ra khi nhận phản hồi đăng ký
     void registerReceived(const QJsonObject &data);
     // Signal phát ra khi nhận phản hồi đăng nhập
