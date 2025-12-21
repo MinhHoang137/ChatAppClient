@@ -1,9 +1,11 @@
 #include "authentication.h"
-#include "winsockclient.h"
 #include <QDebug>
 #include <QJsonObject>
+#include "winsockclient.h"
 
-AuthenticationHandler::AuthenticationHandler(QObject *parent) : QObject(parent) {}
+AuthenticationHandler::AuthenticationHandler(QObject *parent)
+    : QObject(parent)
+{}
 
 // Gửi yêu cầu đăng ký
 void AuthenticationHandler::registerUser(QString username, QString password)

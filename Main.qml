@@ -28,6 +28,30 @@ Window {
     Component {
         id: authPage
         Page {
+            // Banner cảnh báo mất kết nối
+            Rectangle {
+                id: disconnectBanner
+                visible: !winSockClient.isConnected
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 40
+                z: 1000
+                color: "#FFF4E5"
+                border.color: "#FFD699"
+                border.width: 1
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 10
+                    Label { text: "Mất kết nối tới server"; color: "#8A6D3B"; font.bold: true }
+                    Item { Layout.fillWidth: true }
+                    Button {
+                        text: "Kết nối lại"
+                        onClicked: winSockClient.reconnect()
+                    }
+                }
+            }
             Dialog {
                 id: messageDialog
                 anchors.centerIn: parent
@@ -61,10 +85,23 @@ Window {
                         messageDialog.open()
                     }
                 }
+
+                function onConnectionLost() {
+                    messageDialog.title = "Mất kết nối"
+                    messageDialog.text = "Kết nối tới server bị mất. Ứng dụng sẽ thử kết nối lại nếu được bật."
+                    messageDialog.open()
+                }
+
+                function onReconnected() {
+                    messageDialog.title = "Đã kết nối lại"
+                    messageDialog.text = "Đã kết nối lại thành công với server."
+                    messageDialog.open()
+                }
             }
 
             ColumnLayout {
                 anchors.fill: parent
+                anchors.topMargin: disconnectBanner.visible ? disconnectBanner.height : 0
                 anchors.margins: 20
                 spacing: 15
 
@@ -104,13 +141,22 @@ Window {
                                 }
                             }
                         }
-                        
-                        Label {
-                            text: winSockClient.statusMessage
-                            color: winSockClient.isConnected ? "green" : "red"
+
+                        RowLayout {
                             Layout.fillWidth: true
-                            horizontalAlignment: Text.AlignHCenter
-                            elide: Text.ElideRight
+                            CheckBox {
+                                id: autoReconnectCheck
+                                text: "Tự động kết nối lại"
+                                checked: true
+                                onToggled: winSockClient.autoReconnect = checked
+                            }
+                            Label {
+                                text: winSockClient.statusMessage
+                                color: winSockClient.isConnected ? "green" : "red"
+                                Layout.fillWidth: true
+                                horizontalAlignment: Text.AlignHCenter
+                                elide: Text.ElideRight
+                            }
                         }
                     }
                 }

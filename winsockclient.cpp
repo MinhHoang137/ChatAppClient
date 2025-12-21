@@ -4,11 +4,12 @@
 #include <QJsonObject>
 #include "authentication.h"
 #include "friendhandlers.h"
+#include "header.h"
 
-WinSockClient* WinSockClient::m_instance = nullptr;
+WinSockClient *WinSockClient::m_instance = nullptr;
 
 // Singleton implementation
-WinSockClient* WinSockClient::getInstance()
+WinSockClient *WinSockClient::getInstance()
 {
     if (m_instance == nullptr) {
         m_instance = new WinSockClient();
@@ -31,21 +32,54 @@ WinSockClient::WinSockClient(QObject *parent)
 
     // Đăng ký các handler xử lý phản hồi từ server (Legacy callbacks)
     registerHandler("registerResponse", handleRegisterResponse);
-    registerHandler("loginResponse",  handleLoginResponse);
+    registerHandler("loginResponse", handleLoginResponse);
 
     // Khởi tạo signal map: Ánh xạ từ action string sang signal emit
     // Khi nhận được gói tin có action tương ứng, signal sẽ được phát ra
-    m_signalMap["registerResponse"] = [this](const QJsonObject &data){ emit registerReceived(data); };
-    m_signalMap["loginResponse"] = [this](const QJsonObject &data){ emit loginReceived(data); };
-    m_signalMap["getNonFriendUsers"] = [this](const QJsonObject &data){ emit nonFriendUsersReceived(data); };
-    m_signalMap["getFriendRequests"] = [this](const QJsonObject &data){ emit friendRequestsReceived(data); };
-    m_signalMap["getFriendsList"] = [this](const QJsonObject &data){ emit friendsListReceived(data); };
-    m_signalMap["queryFriendStatus"] = [this](const QJsonObject &data){ emit friendStatusReceived(data); };
-    
+    m_signalMap["registerResponse"] = [this](const QJsonObject &data) {
+        emit registerReceived(data);
+    };
+    m_signalMap["loginResponse"] = [this](const QJsonObject &data) { emit loginReceived(data); };
+    m_signalMap["getNonFriendUsers"] = [this](const QJsonObject &data) {
+        emit nonFriendUsersReceived(data);
+    };
+    m_signalMap["getFriendRequests"] = [this](const QJsonObject &data) {
+        emit friendRequestsReceived(data);
+    };
+    m_signalMap["getFriendsList"] = [this](const QJsonObject &data) {
+        emit friendsListReceived(data);
+    };
+    m_signalMap["queryFriendStatus"] = [this](const QJsonObject &data) {
+        emit friendStatusReceived(data);
+    };
+
     // Các action liên quan đến tin nhắn đều được chuyển về FriendHandlers xử lý
-    m_signalMap["receiveMessage"] = [](const QJsonObject &data){ emit FriendHandlers::getInstance()->messageReceived(data); };
-    m_signalMap["getAllMessages"] = [](const QJsonObject &data){ emit FriendHandlers::getInstance()->messageReceived(data); };
-    m_signalMap["sendMessage"] = [](const QJsonObject &data){ emit FriendHandlers::getInstance()->messageReceived(data); };
+    m_signalMap["receiveMessage"] = [](const QJsonObject &data) {
+        emit FriendHandlers::getInstance()->messageReceived(data);
+    };
+    m_signalMap["getAllMessages"] = [](const QJsonObject &data) {
+        emit FriendHandlers::getInstance()->messageReceived(data);
+    };
+    m_signalMap["sendMessage"] = [](const QJsonObject &data) {
+        emit FriendHandlers::getInstance()->messageReceived(data);
+    };
+
+    // Group-related signals
+    m_signalMap["getUserGroups"] = [](const QJsonObject &data) {
+        emit FriendHandlers::getInstance()->groupsReceived(data);
+    };
+    m_signalMap["getGroupMessages"] = [](const QJsonObject &data) {
+        emit FriendHandlers::getInstance()->groupMessageReceived(data);
+    };
+    m_signalMap["receiveGroupMessage"] = [](const QJsonObject &data) {
+        emit FriendHandlers::getInstance()->groupMessageReceived(data);
+    };
+    m_signalMap["sendGroupMessage"] = [](const QJsonObject &data) {
+        emit FriendHandlers::getInstance()->groupMessageReceived(data);
+    };
+    m_signalMap["getGroupMembers"] = [](const QJsonObject &data) {
+        emit FriendHandlers::getInstance()->groupMembersReceived(data);
+    };
 }
 
 int WinSockClient::getTargetId() const
@@ -55,8 +89,15 @@ int WinSockClient::getTargetId() const
 
 void WinSockClient::setTargetId(int newTargetId)
 {
-    targetId = newTargetId;
-    groupId = 0; // Reset group ID khi chọn chat với user
+    if (targetId != newTargetId) {
+        targetId = newTargetId;
+        emit targetIdChanged();
+    }
+    // Chỉ reset groupId khi đang set targetId khác 0 (tức là chọn chat với user)
+    if (newTargetId != 0 && groupId != 0) {
+        groupId = 0;
+        emit groupIdChanged();
+    }
 }
 
 int WinSockClient::getGroupId() const
@@ -66,8 +107,15 @@ int WinSockClient::getGroupId() const
 
 void WinSockClient::setGroupId(int newGroupId)
 {
-    groupId = newGroupId;
-    targetId = 0; // Reset target ID khi chọn chat nhóm
+    if (groupId != newGroupId) {
+        groupId = newGroupId;
+        emit groupIdChanged();
+    }
+    // Chỉ reset targetId khi đang set groupId khác 0 (tức là chọn chat nhóm)
+    if (newGroupId != 0 && targetId != 0) {
+        targetId = 0;
+        emit targetIdChanged();
+    }
 }
 
 WinSockClient::~WinSockClient()
@@ -83,6 +131,9 @@ void WinSockClient::connectToServer(const QString &ip, const QString &port)
     }
 
     setStatus("Đang kết nối...");
+    m_lastIp = ip;
+    m_lastPort = port;
+    m_reconnectAttempts = 0;
 
     struct addrinfo *result = NULL, *ptr = NULL, hints;
 
@@ -147,6 +198,11 @@ int WinSockClient::sendMessage(const QJsonObject &json)
     QJsonDocument doc(json);
     QByteArray bytes = doc.toJson(QJsonDocument::Compact);
     std::string msg = bytes.toStdString();
+    // Append newline as a simple frame delimiter for TCP stream parsing on server
+    msg.push_back('\n');
+
+    // Log enqueue of outgoing message for traceability
+    clientLogMessage(std::string("[QUEUE] ") + msg);
 
     // Đẩy tin nhắn vào hàng đợi gửi (Thread-safe)
     {
@@ -154,7 +210,7 @@ int WinSockClient::sendMessage(const QJsonObject &json)
         m_sendQueue.push(msg);
     }
     m_sendCv.notify_one(); // Đánh thức luồng gửi
-    return (int)msg.size();
+    return (int) msg.size();
 }
 
 void WinSockClient::disconnectFromServer()
@@ -193,6 +249,9 @@ void WinSockClient::receiveLoop()
             std::string msg(recvbuf, iResult);
             QString qMsg = QString::fromStdString(msg);
 
+            // Ghi log dữ liệu nhận được từ Server
+            clientLogMessage(std::string("[RX] ") + msg);
+
             // Parse JSON ngay trong luồng nhận
             QJsonDocument doc = QJsonDocument::fromJson(qMsg.toUtf8());
             if (!doc.isNull() && doc.isObject()) {
@@ -207,12 +266,14 @@ void WinSockClient::receiveLoop()
             if (m_running) {
                 // Server đóng kết nối
                 m_running = false;
+                clientLogMessage("[INFO] Server closed the connection.");
             }
         } else {
             // Error
             if (m_running) {
                 // Lỗi nhận
                 m_running = false;
+                clientLogMessage("[ERROR] recv failed, connection lost.");
             }
         }
     }
@@ -221,6 +282,10 @@ void WinSockClient::receiveLoop()
         QMetaObject::invokeMethod(this, [this]() {
             setConnected(false);
             setStatus("Mất kết nối với server.");
+            emit connectionLost();
+            if (m_autoReconnect) {
+                startAutoReconnect();
+            }
         });
     }
 }
@@ -242,10 +307,14 @@ void WinSockClient::sendLoop()
             m_sendQueue.pop();
             lock.unlock(); // Unlock để gửi, tránh giữ lock lâu gây block luồng khác
 
+            // Log the actual transmit attempt
+            clientLogMessage(std::string("[TX] ") + msg);
             int iResult = send(m_socket, msg.c_str(), (int) msg.length(), 0);
             if (iResult == SOCKET_ERROR) {
                 // Xử lý lỗi gửi
                 m_running = false;
+                setStatus("Lỗi gửi dữ liệu. Mất kết nối.");
+                clientLogMessage("[ERROR] send failed, connection lost.");
             }
 
             lock.lock(); // Lock lại để check queue tiếp
@@ -287,7 +356,7 @@ void WinSockClient::registerHandler(const QString &action, MessageHandler handle
 void WinSockClient::processMessage(const QJsonObject &message)
 {
     QString action = message["action"].toString();
-    
+
     // Gọi handler callback (nếu có)
     if (m_handlers.find(action) != m_handlers.end()) {
         m_handlers[action](message);
@@ -301,13 +370,89 @@ void WinSockClient::processMessage(const QJsonObject &message)
     }
 }
 
-int WinSockClient::getUserId() const {
+int WinSockClient::getUserId() const
+{
     return userId;
 }
 
-void WinSockClient::setUserId(int id){
+void WinSockClient::setUserId(int id)
+{
     if (userId != id) {
         userId = id;
         emit userIdChanged();
     }
+}
+
+bool WinSockClient::autoReconnect() const
+{
+    return m_autoReconnect.load();
+}
+
+void WinSockClient::setAutoReconnect(bool enable)
+{
+    if (m_autoReconnect.load() != enable) {
+        m_autoReconnect.store(enable);
+        emit autoReconnectChanged();
+    }
+}
+
+int WinSockClient::reconnectAttempts() const
+{
+    return m_reconnectAttempts;
+}
+
+void WinSockClient::reconnect()
+{
+    // Thử kết nối lại ngay lập tức sử dụng cấu hình trước đó
+    if (!m_lastIp.isEmpty() && !m_lastPort.isEmpty()) {
+        connectToServer(m_lastIp, m_lastPort);
+    }
+}
+
+void WinSockClient::startAutoReconnect()
+{
+    // Nếu đã có luồng reconnect đang chạy, không khởi tạo thêm
+    if (m_reconnectThread.joinable()) {
+        return;
+    }
+
+    m_reconnectThread = std::thread([this]() {
+        const int maxAttempts = 5;
+        int delayMs = 1000; // 1s ban đầu
+        for (m_reconnectAttempts = 1; m_reconnectAttempts <= maxAttempts; ++m_reconnectAttempts) {
+            // Nếu người dùng đã tự kết nối lại thành công ở nơi khác
+            if (m_connected) {
+                break;
+            }
+            // Nếu bị tắt auto reconnect thì dừng
+            if (!m_autoReconnect.load()) {
+                break;
+            }
+
+            // Thử kết nối
+            QMetaObject::invokeMethod(this, [this]() {
+                setStatus(QString("Đang thử kết nối lại (lần %1)...").arg(m_reconnectAttempts));
+            }, Qt::QueuedConnection);
+
+            if (!m_lastIp.isEmpty() && !m_lastPort.isEmpty()) {
+                connectToServer(m_lastIp, m_lastPort);
+            }
+
+            // Kiểm tra kết quả
+            if (m_connected) {
+                QMetaObject::invokeMethod(this, [this]() {
+                    emit reconnected();
+                    setStatus("Kết nối lại thành công!");
+                }, Qt::QueuedConnection);
+                break;
+            } else {
+                QMetaObject::invokeMethod(this, [this]() { emit reconnectFailed(m_reconnectAttempts); },
+                                          Qt::QueuedConnection);
+            }
+
+            // Backoff
+            std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
+            delayMs = std::min(delayMs * 2, 8000); // Tối đa 8s
+        }
+    });
 }
