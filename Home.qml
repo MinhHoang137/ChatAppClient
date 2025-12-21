@@ -29,6 +29,26 @@ Page {
         anchors.fill: parent
         spacing: 0
 
+        // Overlay cảnh báo khi mất kết nối
+        Rectangle {
+            visible: !winSockClient.isConnected
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 36
+            z: 10
+            color: "#FFF4E5"
+            border.color: "#FFD699"
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 8
+                spacing: 10
+                Label { text: "Mất kết nối tới server"; color: "#8A6D3B" }
+                Item { Layout.fillWidth: true }
+                Button { text: "Kết nối lại"; onClicked: winSockClient.reconnect() }
+            }
+        }
+
         // --- LEFT SIDEBAR (Danh sách) ---
         Rectangle {
             Layout.preferredWidth: 300
@@ -64,6 +84,11 @@ Page {
                             friendHandlers.fetchNonFriendUsers()
                         } else if (currentIndex === 2) {
                             friendHandlers.fetchFriendRequests()
+                        } else if (currentIndex === 3) {
+                            friendHandlers.fetchGroups()
+                            // Prefetch lists used by Manage Members dialog
+                            friendHandlers.fetchFriends()
+                            friendHandlers.fetchNonFriendUsers()
                         }
                     }
                 }
@@ -77,6 +102,7 @@ Page {
                     ListView {
                         model: friendHandlers.friends
                         clip: true
+                        enabled: winSockClient.isConnected
                         delegate: ItemDelegate {
                             width: parent.width
                             height: 50
@@ -88,7 +114,6 @@ Page {
                                 selectedUserStatus = modelData.status
                                 friendHandlers.loadMessages(modelData.userID)
                                 friendHandlers.sendQueryFriendStatus(modelData.userID)
-                                console.log("Target ID set to:", modelData.userID)
                             }
                             
                             RowLayout {
@@ -128,6 +153,7 @@ Page {
                     ListView {
                         model: friendHandlers.nonFriendUsers
                         clip: true
+                        enabled: winSockClient.isConnected
                         delegate: ItemDelegate {
                             width: parent.width
                             height: 50
@@ -139,7 +165,6 @@ Page {
                                 selectedUserStatus = modelData.status
                                 friendHandlers.loadMessages(modelData.userID)
                                 friendHandlers.sendQueryFriendStatus(modelData.userID)
-                                console.log("Target ID set to:", modelData.userID)
                             }
 
                             RowLayout {
@@ -179,6 +204,7 @@ Page {
                     ListView {
                         model: friendHandlers.friendRequests
                         clip: true
+                        enabled: winSockClient.isConnected
                         delegate: ItemDelegate {
                             width: parent.width
                             height: 50
@@ -216,7 +242,6 @@ Page {
                                     text: "Chấp nhận"
                                     onClicked: {
                                         friendHandlers.sendAcceptFriendRequest(modelData.userID)
-                                        console.log("Accepted friend request from:", modelData.userID)
                                     }
                                 }
                             }
@@ -225,29 +250,94 @@ Page {
                     }
 
                     // Tab 4: Nhóm
-                    ListView {
-                        model: 3
-                        clip: true
-                        delegate: ItemDelegate {
-                            width: parent.width
-                            height: 50
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.margins: 10
-                                spacing: 10
-                                Rectangle {
-                                    width: 32; height: 32; radius: 4
-                                    color: "#cccccc"
-                                    Text { anchors.centerIn: parent; text: "G" }
-                                }
-                                Label { 
-                                    text: "Nhóm " + (index + 1)
-                                    Layout.fillWidth: true
-                                    elide: Text.ElideRight
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        spacing: 8
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            TextField {
+                                id: newGroupName
+                                placeholderText: "Tên nhóm mới"
+                                Layout.fillWidth: true
+                            }
+                            Button {
+                                text: "Tạo nhóm"
+                                highlighted: true
+                                onClicked: {
+                                    if (newGroupName.text.trim() !== "") {
+                                        friendHandlers.createGroup(newGroupName.text)
+                                        newGroupName.text = ""
+                                        friendHandlers.fetchGroups()
+                                    }
                                 }
                             }
                         }
-                        ScrollIndicator.vertical: ScrollIndicator { }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Button {
+                                text: "Quản lý thành viên"
+                                enabled: winSockClient.isConnected
+                                onClicked: {
+                                    friendHandlers.fetchFriends()
+                                    friendHandlers.fetchNonFriendUsers()
+                                    friendHandlers.loadGroupMembers(winSockClient.getGroupId())
+                                    groupMemberDialog.open()
+                                }
+                            }
+                            Item { Layout.fillWidth: true }
+                            Button {
+                                text: "Làm mới danh sách"
+                                onClicked: friendHandlers.fetchGroups()
+                            }
+                        }
+
+                        ListView {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            model: friendHandlers.groups
+                            clip: true
+                            delegate: ItemDelegate {
+                                width: parent.width
+                                height: 50
+                                highlighted: ListView.isCurrentItem
+                                onClicked: {
+                                    ListView.view.currentIndex = index
+                                    winSockClient.setGroupId(modelData.groupID)
+                                    winSockClient.setTargetId(0)
+                                    selectedUserName = modelData.groupName
+                                    selectedUserStatus = -1
+                                    friendHandlers.loadGroupMessages(modelData.groupID)
+                                    friendHandlers.loadGroupMembers(modelData.groupID)
+                                }
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 10
+                                    spacing: 10
+                                    Rectangle {
+                                        width: 32; height: 32; radius: 4
+                                        color: "#cccccc"
+                                        Text { anchors.centerIn: parent; text: "G" }
+                                    }
+                                    Label { 
+                                        text: modelData.groupName
+                                        Layout.fillWidth: true
+                                        elide: Text.ElideRight
+                                    }
+                                    Button {
+                                        text: "Rời nhóm"
+                                        onClicked: {
+                                            friendHandlers.leaveGroup(modelData.groupID)
+                                            friendHandlers.fetchGroups()
+                                        }
+                                    }
+                                }
+                            }
+                            ScrollIndicator.vertical: ScrollIndicator { }
+                        }
                     }
                 }
             }
@@ -316,31 +406,46 @@ Page {
                         anchors.fill: parent
                         anchors.margins: 10
                         clip: true
-                        model: friendHandlers.messages
+                        model: winSockClient.groupId !== 0 ? friendHandlers.groupMessages : friendHandlers.messages
                         spacing: 10
+                        enabled: winSockClient.isConnected
                         
                         delegate: Item {
-                            width: parent.width
-                            height: msgRect.height
+                            width: messageListView.width
+                            height: msgColumn.height
 
-                            Rectangle {
-                                id: msgRect
-                                color: modelData.senderID === winSockClient.userId ? "#0078d4" : "white"
-                                radius: 10
-                                width: Math.min(msgText.implicitWidth + 24, parent.width * 0.7)
-                                height: msgText.implicitHeight + 20
+                            Column {
+                                id: msgColumn
                                 anchors.right: modelData.senderID === winSockClient.userId ? parent.right : undefined
                                 anchors.left: modelData.senderID !== winSockClient.userId ? parent.left : undefined
-                                border.color: "#e1dfdd"
-                                border.width: modelData.senderID !== winSockClient.userId ? 1 : 0
-
+                                spacing: 2
+                                
+                                // Show sender name for group messages (not self)
                                 Text {
-                                    id: msgText
-                                    anchors.centerIn: parent
-                                    text: modelData.content
-                                    color: modelData.senderID === winSockClient.userId ? "white" : "black"
-                                    width: parent.width - 24
-                                    wrapMode: Text.Wrap
+                                    text: modelData.senderName || ""
+                                    font.pixelSize: 11
+                                    color: "#666"
+                                    visible: winSockClient.groupId !== 0 && modelData.senderID !== winSockClient.userId && (modelData.senderName || "") !== ""
+                                    leftPadding: 8
+                                }
+
+                                Rectangle {
+                                    id: msgRect
+                                    color: modelData.senderID === winSockClient.userId ? "#0078d4" : "white"
+                                    radius: 10
+                                    width: Math.min(msgText.implicitWidth + 24, messageListView.width * 0.7)
+                                    height: msgText.implicitHeight + 20
+                                    border.color: "#e1dfdd"
+                                    border.width: modelData.senderID !== winSockClient.userId ? 1 : 0
+
+                                    Text {
+                                        id: msgText
+                                        anchors.centerIn: parent
+                                        text: modelData.content
+                                        color: modelData.senderID === winSockClient.userId ? "white" : "black"
+                                        width: parent.width - 24
+                                        wrapMode: Text.Wrap
+                                    }
                                 }
                             }
                         }
@@ -376,6 +481,7 @@ Page {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 40
                             selectByMouse: true
+                            enabled: winSockClient.isConnected
                             background: Rectangle {
                                 color: "#f3f2f1"
                                 radius: 20
@@ -388,6 +494,7 @@ Page {
                             text: "Gửi"
                             highlighted: true
                             Layout.preferredHeight: 40
+                            enabled: winSockClient.isConnected
                             background: Rectangle {
                                 color: parent.down ? "#005a9e" : "#0078d4"
                                 radius: 20
@@ -400,7 +507,11 @@ Page {
                             }
                             onClicked: {
                                 if (messageInput.text.trim() !== "") {
-                                    friendHandlers.sendMessage(messageInput.text)
+                                    if (winSockClient.groupId !== 0) {
+                                        friendHandlers.sendGroupMessage(messageInput.text)
+                                    } else {
+                                        friendHandlers.sendMessage(messageInput.text)
+                                    }
                                     messageInput.text = ""
                                 }
                             }
@@ -510,13 +621,226 @@ Page {
                 }
 
                 Button {
-                    text: "Thêm bạn vào nhóm"
+                    text: "Quản lý thành viên nhóm"
                     Layout.fillWidth: true
-                    visible: contactTabBar.currentIndex === 2
+                    visible: contactTabBar.currentIndex === 3
                     highlighted: true
+                    enabled: winSockClient.isConnected
+                    onClicked: {
+                        friendHandlers.fetchFriends();
+                        friendHandlers.fetchNonFriendUsers();
+                        friendHandlers.loadGroupMembers(winSockClient.getGroupId());
+                        groupMemberDialog.open();
+                    }
                 }
                 
                 Item { Layout.fillHeight: true }
+            }
+        }
+    }
+
+    // Dialog quản lý thành viên nhóm
+    Dialog {
+        id: groupMemberDialog
+        title: "Quản lý thành viên nhóm"
+        modal: true
+        standardButtons: Dialog.Close
+        width: 700
+        height: 560
+        visible: false
+
+        onVisibleChanged: {
+            if (visible) {
+                friendHandlers.fetchGroups()
+                friendHandlers.fetchFriends()
+                friendHandlers.fetchNonFriendUsers()
+                if (winSockClient.groupId !== 0) {
+                    friendHandlers.loadGroupMembers(winSockClient.getGroupId())
+                }
+            }
+        }
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.margins: 12
+            spacing: 12
+
+            // === LEFT SIDEBAR: Danh sách nhóm ===
+            Rectangle {
+                Layout.preferredWidth: 180
+                Layout.fillHeight: true
+                color: "#f3f2f1"
+                border.color: "#e1dfdd"
+                radius: 6
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 6
+
+                    Label {
+                        text: "Danh sách nhóm"
+                        font.bold: true
+                        font.pixelSize: 14
+                        Layout.alignment: Qt.AlignHCenter
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 1
+                        color: "#e1dfdd"
+                    }
+
+                    ListView {
+                        id: dialogGroupList
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
+                        model: friendHandlers.groups
+                        currentIndex: -1
+                        delegate: ItemDelegate {
+                            width: dialogGroupList.width
+                            height: 44
+                            highlighted: winSockClient.groupId === modelData.groupID
+                            onClicked: {
+                                winSockClient.setGroupId(modelData.groupID)
+                                friendHandlers.loadGroupMembers(modelData.groupID)
+                            }
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.margins: 8
+                                spacing: 6
+                                Rectangle {
+                                    width: 28; height: 28; radius: 4
+                                    color: winSockClient.groupId === modelData.groupID ? "#1976D2" : "#cccccc"
+                                    Text { anchors.centerIn: parent; text: "G"; color: "white"; font.bold: true }
+                                }
+                                Label {
+                                    text: modelData.groupName
+                                    Layout.fillWidth: true
+                                    elide: Text.ElideRight
+                                    font.bold: winSockClient.groupId === modelData.groupID
+                                    color: winSockClient.groupId === modelData.groupID ? "#1976D2" : "black"
+                                }
+                            }
+                        }
+                        ScrollIndicator.vertical: ScrollIndicator {}
+
+                        Label {
+                            anchors.centerIn: parent
+                            text: friendHandlers.groups.length === 0 ? "Chưa có nhóm" : ""
+                            visible: friendHandlers.groups.length === 0
+                            color: "gray"
+                        }
+                    }
+                }
+            }
+
+            // === RIGHT CONTENT: Quản lý thành viên ===
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: 8
+
+                // Hint banner when no group is selected
+                Rectangle {
+                    visible: winSockClient.groupId === 0
+                    Layout.fillWidth: true
+                    height: 32
+                    color: "#FFF4E5"
+                    border.color: "#FFD699"
+                    radius: 4
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        Label { text: "Chọn một nhóm ở bên trái để quản lý thành viên."; color: "#8A6D3B"; wrapMode: Text.Wrap }
+                    }
+                }
+
+                TabBar {
+                    id: addMemberTabs
+                    Layout.fillWidth: true
+                    TabButton { text: "Bạn bè" }
+                    TabButton { text: "Người lạ" }
+                }
+
+                TextField {
+                    id: searchField
+                    placeholderText: "Tìm kiếm người dùng"
+                    Layout.fillWidth: true
+                }
+
+                ListView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    model: addMemberTabs.currentIndex === 0 ? friendHandlers.friends : friendHandlers.nonFriendUsers
+                    delegate: ItemDelegate {
+                        width: parent.width
+                        height: 50
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 8
+                            Label { text: modelData.username; Layout.fillWidth: true; elide: Text.ElideRight }
+                            Button {
+                                text: "Thêm"
+                                enabled: winSockClient.isConnected && winSockClient.groupId !== 0
+                                onClicked: {
+                                    friendHandlers.addUserToGroup(winSockClient.getGroupId(), modelData.userID)
+                                }
+                            }
+                        }
+                        visible: modelData.username.toLowerCase().indexOf(searchField.text.toLowerCase()) !== -1
+                    }
+                    ScrollIndicator.vertical: ScrollIndicator {}
+
+                    Label {
+                        anchors.centerIn: parent
+                        text: winSockClient.isConnected ? "Đang tải danh sách hoặc chưa có dữ liệu" : "Chưa kết nối tới server"
+                        color: "gray"
+                        visible: (addMemberTabs.currentIndex === 0 ? friendHandlers.friends.length : friendHandlers.nonFriendUsers.length) === 0
+                    }
+                    BusyIndicator {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.top: parent.top
+                        anchors.topMargin: 8
+                        running: winSockClient.isConnected
+                        visible: (addMemberTabs.currentIndex === 0 ? friendHandlers.friends.length : friendHandlers.nonFriendUsers.length) === 0
+                    }
+                }
+
+                Label { text: "Thành viên hiện tại"; font.bold: true; Layout.topMargin: 8 }
+                ListView {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 180
+                    clip: true
+                    model: friendHandlers.groupMembers
+                    delegate: ItemDelegate {
+                        width: parent.width
+                        height: 50
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 8
+                            Label { text: modelData.username; Layout.fillWidth: true; elide: Text.ElideRight }
+                            Button {
+                                text: "Xóa"
+                                enabled: winSockClient.isConnected && winSockClient.groupId !== 0
+                                onClicked: {
+                                    friendHandlers.removeUserFromGroup(winSockClient.getGroupId(), modelData.userID)
+                                }
+                            }
+                        }
+                    }
+                    ScrollIndicator.vertical: ScrollIndicator {}
+                    Label {
+                        anchors.centerIn: parent
+                        text: friendHandlers.groupMembers.length === 0 ? "Nhóm chưa có thành viên hoặc đang tải" : ""
+                        visible: friendHandlers.groupMembers.length === 0
+                        color: "gray"
+                    }
+                }
             }
         }
     }

@@ -1,9 +1,9 @@
 #pragma once
 
-#include <QObject>
 #include <QJsonObject>
-#include <QString>
+#include <QObject>
 #include <QQmlEngine>
+#include <QString>
 
 // Các hàm callback xử lý phản hồi từ server (Legacy)
 void handleRegisterResponse(const QJsonObject &response);

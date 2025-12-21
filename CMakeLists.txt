@@ -12,6 +12,8 @@ qt_add_executable(appClient
     main.cpp
     winsockclient.cpp
     winsockclient.h
+    header.cpp
+    header.h
 )
 
 qt_add_qml_module(appClient
