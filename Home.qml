@@ -752,7 +752,7 @@ Page {
                             onClicked: {
                                 if (messageInput.text.trim() !== "") {
                                     if (winSockClient.groupId !== 0) {
-                                        groupHandlers.sendGroupMessage(messageInput.text)
+                                        groupHandlers.sendGroupMessage(messageInput.text, username)
                                     } else {
                                         friendHandlers.sendMessage(messageInput.text)
                                     }

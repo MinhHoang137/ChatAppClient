@@ -10,6 +10,7 @@ class GroupHandlers : public QObject {
   Q_OBJECT
   QML_ELEMENT
   Q_PROPERTY(QVariantList groups READ groups NOTIFY groupsChanged)
+  Q_PROPERTY(QVariantList groupMessages READ groupMessages NOTIFY groupMessagesChanged)
   Q_PROPERTY(
       QVariantList groupMembers READ groupMembers NOTIFY groupMembersChanged)
   Q_PROPERTY(QVariantList allGroups READ allGroups NOTIFY allGroupsChanged)
@@ -27,7 +28,7 @@ public:
   Q_INVOKABLE void addUserToGroup(int groupID, int userID);
   Q_INVOKABLE void removeUserFromGroup(int groupID, int userID);
   Q_INVOKABLE void leaveGroup(int groupID);
-  Q_INVOKABLE void sendGroupMessage(const QString &content);
+  Q_INVOKABLE void sendGroupMessage(const QString &content, const QString &senderName);
   Q_INVOKABLE void loadGroupMessages(int groupID);
   Q_INVOKABLE void loadGroupMembers(int groupID);
 

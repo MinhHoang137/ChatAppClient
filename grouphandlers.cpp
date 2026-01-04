@@ -85,7 +85,7 @@ void GroupHandlers::leaveGroup(int groupID) {
   WinSockClient::getInstance()->sendMessage(request);
 }
 
-void GroupHandlers::sendGroupMessage(const QString &content) {
+void GroupHandlers::sendGroupMessage(const QString &content, const QString &senderName) {
   int senderID = WinSockClient::getInstance()->getUserId();
   int groupID = WinSockClient::getInstance()->getGroupId();
   if (senderID == 0 || groupID == 0 || content.isEmpty()) {
@@ -114,8 +114,10 @@ void GroupHandlers::sendGroupMessage(const QString &content) {
   // Optimistic update
   QVariantMap map;
   map["senderID"] = senderID;
+  map["senderName"] = senderName;
   map["groupID"] = groupID;
   map["content"] = content;
+  map["sentAt"] = QDateTime::currentDateTime().toString(Qt::ISODate);
   m_groupMessages.append(map);
   emit groupMessagesChanged();
 }
