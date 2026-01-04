@@ -1,14 +1,22 @@
 #include "filesharinghandlers.h"
 #include "winsockclient.h"
 #include <QDebug>
-#include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QUrl>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <vector>
+
+namespace fs = std::filesystem;
 
 FileSharingHandlers *FileSharingHandlers::m_instance = nullptr;
 static const int CHUNK_SIZE = 64 * 1024; // 64KB
+
+// Helper: Convert QString unicode path to std::filesystem::path
+static fs::path q2path(const QString &s) { return fs::path(s.toStdWString()); }
 
 FileSharingHandlers *FileSharingHandlers::getInstance() {
   if (m_instance == nullptr) {
@@ -25,11 +33,10 @@ FileSharingHandlers::FileSharingHandlers(QObject *parent) : QObject(parent) {
   connect(this, &FileSharingHandlers::downloadChunkReceived, this,
           &FileSharingHandlers::onDownloadChunkReceived);
 
-  // Connect operation results (createFolder, deleteItem, renameItem) to a
-  // generic handler or specific ones For simplicity, we might reuse listFiles
-  // to refresh, so we just log or emit success
   connect(this, &FileSharingHandlers::operationResultReceived, this,
           &FileSharingHandlers::onOperationResultReceived);
+  connect(this, &FileSharingHandlers::browseDirectoriesReceived, this,
+          &FileSharingHandlers::onBrowseDirectoriesReceived);
 }
 
 void FileSharingHandlers::listFiles(int groupID, const QString &path) {
@@ -57,19 +64,37 @@ void FileSharingHandlers::uploadFile(int groupID, const QString &path,
     return;
   }
 
+  // Convert QML URL to local path (QString) then to fs::path
   QString localPath = QUrl(fileUrl).toLocalFile();
-  QFile file(localPath);
-  if (!file.open(QIODevice::ReadOnly)) {
-    emit uploadFinished(false, "Cannot open file.");
+  fs::path filePath = q2path(localPath);
+
+  // Use std::ifstream
+  std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+  if (!file.is_open()) {
+    emit uploadFinished(false, "Cannot open file (std::ifstream).");
     return;
   }
 
-  QByteArray data = file.readAll();
+  std::streamsize size = file.tellg();
+  file.seekg(0, std::ios::beg);
+
+  std::vector<char> buffer(size);
+  if (file.read(buffer.data(), size)) {
+    // Read success
+  }
   file.close();
+
+  // Convert to QByteArray for easier splitting/sending with current logic
+  // (We could keep it as vector and slice it, but QByteArray is convenient for
+  // Base64)
+  QByteArray data(buffer.data(), (int)size);
 
   m_upload.groupID = groupID;
   m_upload.path = path;
-  m_upload.fileName = QFileInfo(localPath).fileName();
+  m_upload.fileName =
+      QFileInfo(localPath)
+          .fileName(); // Can use fs::path::filename but QFileInfo handles
+                       // unicode logic well for QString
   m_upload.data = data;
   m_upload.totalChunks = (data.size() + CHUNK_SIZE - 1) / CHUNK_SIZE;
   m_upload.currentChunk = 0;
@@ -94,7 +119,12 @@ void FileSharingHandlers::sendNextUploadChunk() {
   }
 
   int start = m_upload.currentChunk * CHUNK_SIZE;
-  int length = std::min(CHUNK_SIZE, (int)m_upload.data.size() - start);
+  // min of chunk size or remaining
+  int length = CHUNK_SIZE;
+  if (start + length > m_upload.data.size()) {
+    length = m_upload.data.size() - start;
+  }
+
   QByteArray chunk = m_upload.data.mid(start, length);
 
   QJsonObject request;
@@ -119,8 +149,12 @@ void FileSharingHandlers::downloadFile(int groupID, const QString &path,
 
   QString savePath = QUrl(saveUrl).toLocalFile();
   // If it's a directory, append filename
-  if (QFileInfo(savePath).isDir()) {
+  // Use std::filesystem to check dir
+  fs::path fbPath = q2path(savePath);
+
+  if (fs::is_directory(fbPath)) {
     savePath += "/" + fileName;
+    fbPath = q2path(savePath);
   }
 
   m_download.groupID = groupID;
@@ -129,15 +163,22 @@ void FileSharingHandlers::downloadFile(int groupID, const QString &path,
   m_download.savePath = savePath;
   m_download.currentChunk = 0;
   m_download.totalBytesReceived = 0;
-  m_download.totalSize = 0; // Unknown initially
+  m_download.totalSize = 0;
   m_download.active = true;
 
-  m_download.file = new QFile(m_download.savePath);
-  if (!m_download.file->open(QIODevice::WriteOnly)) {
+  // Cleanup old file ptr if any (should stay null usually)
+  if (m_download.file) {
+    delete m_download.file;
+    m_download.file = nullptr;
+  }
+
+  m_download.file = new std::ofstream(fbPath, std::ios::binary | std::ios::out);
+
+  if (!m_download.file->is_open()) {
     m_download.active = false;
     delete m_download.file;
     m_download.file = nullptr;
-    emit downloadFinished(false, "Cannot open save file.");
+    emit downloadFinished(false, "Cannot open save file (std::ofstream).");
     return;
   }
 
@@ -237,10 +278,14 @@ void FileSharingHandlers::onDownloadChunkReceived(const QJsonObject &data) {
     if (index == m_download.currentChunk) {
       QByteArray chunk =
           QByteArray::fromBase64(data["data"].toString().toLatin1());
-      m_download.file->write(chunk);
+
+      // Write using std::ofstream
+      if (m_download.file) {
+        m_download.file->write(chunk.constData(), chunk.size());
+      }
+
       m_download.totalBytesReceived += chunk.size();
 
-      // Should get totalSize from server if possible, or just estimate
       if (data.contains("totalSize")) {
         m_download.totalSize = data["totalSize"].toVariant().toLongLong();
       }
@@ -252,9 +297,11 @@ void FileSharingHandlers::onDownloadChunkReceived(const QJsonObject &data) {
       }
 
       if (data["eof"].toBool()) {
-        m_download.file->close();
-        delete m_download.file;
-        m_download.file = nullptr;
+        if (m_download.file) {
+          m_download.file->close();
+          delete m_download.file;
+          m_download.file = nullptr;
+        }
         m_download.active = false;
         emit downloadFinished(true, "Download completed.");
       } else {
@@ -264,9 +311,11 @@ void FileSharingHandlers::onDownloadChunkReceived(const QJsonObject &data) {
     }
   } else {
     m_download.active = false;
-    m_download.file->close();
-    delete m_download.file;
-    m_download.file = nullptr;
+    if (m_download.file) {
+      m_download.file->close();
+      delete m_download.file;
+      m_download.file = nullptr;
+    }
     emit downloadFinished(false,
                           "Download failed: " + data["message"].toString());
   }
@@ -319,12 +368,9 @@ void FileSharingHandlers::onOperationResultReceived(const QJsonObject &data) {
         action == "renameItem" || action == "moveItem" ||
         action == "copyItem") {
       qDebug() << "Operation success:" << action;
-      // If move or copy, we might want to clear clipboard if it was a move?
       if (action == "moveItem" && m_clipboardAction == "move") {
         clearClipboard();
       }
-      // Trigger a refresh call from UI or here if we knew the context.
-      // For now, rely on UI to refresh manually or optimistically.
       emit fileOperationFinished(true, "Operation successful.");
     }
   } else {
@@ -342,4 +388,33 @@ double FileSharingHandlers::uploadProgress() const { return m_uploadProgress; }
 
 double FileSharingHandlers::downloadProgress() const {
   return m_downloadProgress;
+}
+
+void FileSharingHandlers::browseDirectories(int groupID, const QString &path) {
+  QJsonObject request;
+  request["action"] = "browseDirectories";
+  request["groupID"] = groupID;
+  request["path"] = path;
+  WinSockClient::getInstance()->sendMessage(request);
+}
+
+QVariantList FileSharingHandlers::moveDialogFolders() const {
+  return m_moveDialogFolders;
+}
+
+void FileSharingHandlers::onBrowseDirectoriesReceived(const QJsonObject &data) {
+  if (data["success"].toBool()) {
+    m_moveDialogFolders.clear();
+    QJsonArray folders = data["folders"].toArray();
+    for (const auto &val : folders) {
+      QJsonObject f = val.toObject();
+      QVariantMap map;
+      map["name"] = f["name"].toString();
+      map["path"] = f["path"].toString();
+      m_moveDialogFolders.append(map);
+    }
+    emit moveDialogFoldersChanged();
+  } else {
+    qDebug() << "Browse directories error:" << data["message"].toString();
+  }
 }

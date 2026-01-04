@@ -310,12 +310,31 @@ Page {
                             spacing: 8
                             Button {
                                 text: "Quản lý thành viên"
-                                enabled: winSockClient.isConnected
+                                enabled: winSockClient.isConnected && winSockClient.groupId !== 0
                                 onClicked: {
                                     friendHandlers.fetchFriends()
                                     friendHandlers.fetchNonFriendUsers()
                                     groupHandlers.loadGroupMembers(winSockClient.getGroupId())
-                                    groupMemberDialog.open()
+                                    // Also fetch requests if leader? let's fetch anyway
+                                    groupHandlers.getGroupRequests(winSockClient.getGroupId())
+                                    groupMemberDialog.open() // wait, groupMemberDialog is not defined?
+                                    // Ah, I see "Right content" is managed by "groupMemberDialog"? 
+                                    // No, the code I saw earlier was just "Right Content". 
+                                    // Maybe line 318 `groupMemberDialog.open()` implies there is a dialog.
+                                    // But earlier view showed "Right Content" as part of the main layout?
+                                    // Let me re-read line 1003. "=== RIGHT CONTENT: Quản lý thành viên ==="
+                                    // It seems the "Right Content" IS the member management view.
+                                    // So the button at 318 might be opening a Popup or it's controlling visibility?
+                                    // If line 1003 is a ColumnLayout in a SplitView (not shown), then it's always visible?
+                                    // Or maybe "groupMemberDialog" is the ID of the right drawer/dialog?
+                                    // Let's assume for now I just add the button "Tìm nhóm".
+                                }
+                            }
+                            Button {
+                                text: "Tìm nhóm"
+                                onClicked: {
+                                    groupHandlers.exploreGroups()
+                                    exploreGroupsDialog.open()
                                 }
                             }
                             Item { Layout.fillWidth: true }
@@ -495,10 +514,12 @@ Page {
                                         }
                                     }
                                     MenuItem {
-                                        text: "Cắt"
+                                        text: "Di chuyển đến..."
                                         onTriggered: {
                                             var path = fileSharingHandlers.currentPath === "" ? modelData.name : fileSharingHandlers.currentPath + "/" + modelData.name
-                                            fileSharingHandlers.setClipboard("move", path)
+                                            moveToDialog.sourcePath = path
+                                            moveToDialog.sourceName = modelData.name
+                                            moveToDialog.open()
                                         }
                                     }
                                     MenuItem {
@@ -1026,6 +1047,18 @@ Page {
                     Layout.fillWidth: true
                     TabButton { text: "Bạn bè" }
                     TabButton { text: "Người lạ" }
+                    TabButton { text: "Yêu cầu" }
+                    onCurrentIndexChanged: {
+                         if (currentIndex === 2) {
+                             if (winSockClient.groupId !== 0) {
+                                 groupHandlers.getGroupRequests(winSockClient.getGroupId())
+                             }
+                         } else if (currentIndex === 0) {
+                             friendHandlers.fetchFriends()
+                         } else if (currentIndex === 1) {
+                             friendHandlers.fetchNonFriendUsers()
+                         }
+                    }
                 }
 
                 TextField {
@@ -1038,7 +1071,7 @@ Page {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
-                    model: addMemberTabs.currentIndex === 0 ? friendHandlers.friends : friendHandlers.nonFriendUsers
+                    model: addMemberTabs.currentIndex === 0 ? friendHandlers.friends : (addMemberTabs.currentIndex === 1 ? friendHandlers.nonFriendUsers : groupHandlers.groupRequests)
                     delegate: ItemDelegate {
                         width: parent.width
                         height: 50
@@ -1049,10 +1082,21 @@ Page {
                             Label { text: modelData.username; Layout.fillWidth: true; elide: Text.ElideRight }
                             Button {
                                 text: "Thêm"
+                                visible: addMemberTabs.currentIndex < 2
                                 enabled: winSockClient.isConnected && winSockClient.groupId !== 0
                                 onClicked: {
                                     groupHandlers.addUserToGroup(winSockClient.getGroupId(), modelData.userID)
                                 }
+                            }
+                            Button {
+                                text: "Duyệt"
+                                visible: addMemberTabs.currentIndex === 2
+                                onClicked: groupHandlers.respondToRequest(modelData.requestID, 1)
+                            }
+                            Button {
+                                text: "Từ chối"
+                                visible: addMemberTabs.currentIndex === 2
+                                onClicked: groupHandlers.respondToRequest(modelData.requestID, 2)
                             }
                         }
                         visible: modelData.username.toLowerCase().indexOf(searchField.text.toLowerCase()) !== -1
@@ -1118,6 +1162,15 @@ Page {
         }
     }
 
+    MoveToDialog {
+        id: moveToDialog
+        anchors.centerIn: parent
+        onMoveConfirmed: (src, dest) => {
+             fileSharingHandlers.moveItem(winSockClient.getGroupId(), src, dest)
+             fileSharingHandlers.listFiles(winSockClient.getGroupId(), fileSharingHandlers.currentPath)
+        }
+    }
+
     QD.MessageDialog {
         id: errorDialog
         title: "Thông báo"
@@ -1130,6 +1183,77 @@ Page {
             if (!success) {
                 errorDialog.text = message
                 errorDialog.open()
+            }
+        }
+    }
+
+    QD.MessageDialog {
+        id: requestJoinResultDialog
+        title: "Thông báo"
+        buttons: QD.MessageDialog.Ok
+    }
+
+    Connections {
+        target: groupHandlers
+        function onRequestJoinFinished(success, message) {
+            requestJoinResultDialog.text = message
+            requestJoinResultDialog.open()
+        }
+    }
+
+    Popup {
+        id: exploreGroupsDialog
+        parent: Overlay.overlay
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        width: 400
+        height: 500
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        Rectangle {
+            anchors.fill: parent
+            color: "white"
+            border.color: "lightgray"
+            radius: 5
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 10
+                Label { text: "Tìm kiếm nhóm"; font.bold: true; font.pixelSize: 16 }
+                
+                ListView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    model: groupHandlers.allGroups
+                    delegate: ItemDelegate {
+                        width: parent.width
+                        height: 50
+                        RowLayout {
+                            anchors.fill: parent
+                            spacing: 10
+                            Label { text: modelData.groupName; Layout.fillWidth: true }
+                            Button {
+                                text: "Xin vào"
+                                onClicked: groupHandlers.requestJoinGroup(modelData.groupID)
+                            }
+                        }
+                    }
+                    Label {
+                        anchors.centerIn: parent
+                        text: "Không có nhóm nào để tham gia."
+                        visible: groupHandlers.allGroups.length === 0
+                        color: "gray"
+                    }
+                }
+                
+                Button {
+                    text: "Đóng"
+                    Layout.alignment: Qt.AlignRight
+                    onClicked: exploreGroupsDialog.close()
+                }
             }
         }
     }

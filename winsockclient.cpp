@@ -80,6 +80,18 @@ WinSockClient::WinSockClient(QObject *parent)
   m_signalMap["getGroupMembers"] = [](const QJsonObject &data) {
     emit GroupHandlers::getInstance()->groupMembersReceived(data);
   };
+  m_signalMap["exploreGroups"] = [](const QJsonObject &data) {
+    emit GroupHandlers::getInstance()->exploreGroupsReceived(data);
+  };
+  m_signalMap["requestJoinGroup"] = [](const QJsonObject &data) {
+    emit GroupHandlers::getInstance()->requestJoinReceived(data);
+  };
+  m_signalMap["getGroupRequests"] = [](const QJsonObject &data) {
+    emit GroupHandlers::getInstance()->groupRequestsReceived(data);
+  };
+  m_signalMap["respondToRequest"] = [](const QJsonObject &data) {
+    emit GroupHandlers::getInstance()->respondToRequestReceived(data);
+  };
 
   // File Sharing signals
   auto fsHandler = FileSharingHandlers::getInstance();
@@ -100,6 +112,9 @@ WinSockClient::WinSockClient(QObject *parent)
   };
   m_signalMap["renameItem"] = [fsHandler](const QJsonObject &data) {
     emit fsHandler->operationResultReceived(data);
+  };
+  m_signalMap["browseDirectories"] = [fsHandler](const QJsonObject &data) {
+    emit fsHandler->browseDirectoriesReceived(data);
   };
 }
 
@@ -251,24 +266,38 @@ void WinSockClient::receiveLoop() {
   char recvbuf[8192];
   int recvbuflen = 8192;
 
+  std::string buffer;
   while (m_running) {
     int iResult = recv(m_socket, recvbuf, recvbuflen, 0);
     if (iResult > 0) {
-      // Nhận được dữ liệu
-      std::string msg(recvbuf, iResult);
-      QString qMsg = QString::fromStdString(msg);
+      // Append received data to buffer
+      buffer.append(recvbuf, iResult);
 
-      // Ghi log dữ liệu nhận được từ Server
-      clientLogMessage(std::string("[RX] ") + msg);
+      // Process all complete messages in the buffer
+      size_t pos;
+      while ((pos = buffer.find('\n')) != std::string::npos) {
+        std::string msg = buffer.substr(0, pos);
+        buffer.erase(0, pos + 1);
 
-      // Parse JSON ngay trong luồng nhận
-      QJsonDocument doc = QJsonDocument::fromJson(qMsg.toUtf8());
-      if (!doc.isNull() && doc.isObject()) {
-        QJsonObject obj = doc.object();
-        // Chuyển việc xử lý logic về Main Thread (UI Thread) để an toàn cập
-        // nhật UI
-        QMetaObject::invokeMethod(
-            this, [this, obj]() { processMessage(obj); }, Qt::QueuedConnection);
+        // Ghi log dữ liệu nhận được từ Server
+        // clientLogMessage(std::string("[RX] ") + msg);
+
+        // Parse JSON
+        // Use QByteArray from raw string bytes to avoid encoding issues
+        QByteArray jsonBytes(msg.data(), msg.size());
+        QJsonDocument doc = QJsonDocument::fromJson(jsonBytes);
+
+        if (!doc.isNull() && doc.isObject()) {
+          QJsonObject obj = doc.object();
+          // Chuyển việc xử lý logic về Main Thread
+          QMetaObject::invokeMethod(
+              this, [this, obj]() { processMessage(obj); },
+              Qt::QueuedConnection);
+        } else {
+          // Optional: Log invalid JSON or keepalives
+          // qDebug() << "Invalid JSON or partial:" <<
+          // QString::fromStdString(msg);
+        }
       }
 
     } else if (iResult == 0) {

@@ -1,11 +1,13 @@
 #ifndef FILESHARINGHANDLERS_H
 #define FILESHARINGHANDLERS_H
 
-#include <QFile>
 #include <QJsonObject>
 #include <QObject>
 #include <QQmlEngine>
 #include <QVariantList>
+#include <fstream>
+#include <iostream>
+#include <memory>
 
 class FileSharingHandlers : public QObject {
   Q_OBJECT
@@ -20,12 +22,15 @@ class FileSharingHandlers : public QObject {
                  clipboardActionChanged)
   Q_PROPERTY(
       QString clipboardPath READ clipboardPath NOTIFY clipboardPathChanged)
+  Q_PROPERTY(QVariantList moveDialogFolders READ moveDialogFolders NOTIFY
+                 moveDialogFoldersChanged)
 
 public:
   static FileSharingHandlers *getInstance();
   explicit FileSharingHandlers(QObject *parent = nullptr);
 
   Q_INVOKABLE void listFiles(int groupID, const QString &path);
+  Q_INVOKABLE void browseDirectories(int groupID, const QString &path);
   Q_INVOKABLE void createFolder(int groupID, const QString &path,
                                 const QString &folderName);
   Q_INVOKABLE void uploadFile(int groupID, const QString &path,
@@ -51,29 +56,35 @@ public:
 
   QVariantList files() const;
   QString currentPath() const;
+  QVariantList clipboard() const;
+  QVariantList moveDialogFolders() const;
   double uploadProgress() const;
   double downloadProgress() const;
 
 signals:
   void filesChanged();
   void currentPathChanged();
+  void operationResultReceived(const QJsonObject &data);
+  void fileOperationFinished(bool success, QString message);
   void uploadProgressChanged();
   void downloadProgressChanged();
   void uploadFinished(bool success, QString message);
   void downloadFinished(bool success, QString message);
-  void fileOperationFinished(bool success, QString message);
 
   void clipboardActionChanged();
   void clipboardPathChanged();
 
-  // Internal signals from socket
+  // Internal signals from WinSockClient
   void listFilesReceived(const QJsonObject &data);
+  void browseDirectoriesReceived(const QJsonObject &data);
   void uploadChunkAck(const QJsonObject &data);
   void downloadChunkReceived(const QJsonObject &data);
-  void operationResultReceived(const QJsonObject &data);
+  void clipboardChanged();
+  void moveDialogFoldersChanged();
 
 private slots:
   void onListFilesReceived(const QJsonObject &data);
+  void onBrowseDirectoriesReceived(const QJsonObject &data);
   void onUploadChunkAck(const QJsonObject &data);
   void onDownloadChunkReceived(const QJsonObject &data);
   void onOperationResultReceived(const QJsonObject &data);
@@ -82,6 +93,9 @@ private:
   static FileSharingHandlers *m_instance;
   QVariantList m_files;
   QString m_currentPath;
+  QVariantList m_clipboard; // List of objects { "name": "foo.txt", "path":
+                            // "docs/", "type": "copy"|"cut" }
+  QVariantList m_moveDialogFolders;
   double m_uploadProgress = 0.0;
   double m_downloadProgress = 0.0;
 
@@ -97,12 +111,16 @@ private:
   } m_upload;
 
   // Download State
+
+  // Forward declare instead of include if possible, but for struct member we
+  // need type or ptr We will use std::ofstream*
+
   struct DownloadState {
     int groupID;
     QString path;
     QString fileName;
     QString savePath;
-    QFile *file = nullptr;
+    std::ofstream *file = nullptr; // Changed from QFile*
     int currentChunk = 0;
     qint64 totalBytesReceived = 0;
     qint64 totalSize = 0;

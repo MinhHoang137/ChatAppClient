@@ -4,7 +4,6 @@
 #include <QDebug>
 #include <QJsonArray>
 
-
 GroupHandlers *GroupHandlers::m_instance = nullptr;
 
 GroupHandlers *GroupHandlers::getInstance() {
@@ -22,6 +21,14 @@ GroupHandlers::GroupHandlers(QObject *parent) : QObject(parent) {
           &GroupHandlers::onGroupMessageReceived);
   connect(this, &GroupHandlers::groupMembersReceived, this,
           &GroupHandlers::onGroupMembersReceived);
+  connect(this, &GroupHandlers::exploreGroupsReceived, this,
+          &GroupHandlers::onExploreGroupsReceived);
+  connect(this, &GroupHandlers::requestJoinReceived, this,
+          &GroupHandlers::onRequestJoinReceived);
+  connect(this, &GroupHandlers::groupRequestsReceived, this,
+          &GroupHandlers::onGroupRequestsReceived);
+  connect(this, &GroupHandlers::respondToRequestReceived, this,
+          &GroupHandlers::onRespondToRequestReceived);
 }
 
 void GroupHandlers::fetchGroups() {
@@ -229,3 +236,101 @@ QVariantList GroupHandlers::groups() const { return m_groups; }
 QVariantList GroupHandlers::groupMessages() const { return m_groupMessages; }
 
 QVariantList GroupHandlers::groupMembers() const { return m_groupMembers; }
+
+void GroupHandlers::exploreGroups() {
+  int userID = WinSockClient::getInstance()->getUserId();
+  QJsonObject request;
+  request["action"] = "exploreGroups";
+  request["userID"] = userID;
+  WinSockClient::getInstance()->sendMessage(request);
+}
+
+void GroupHandlers::requestJoinGroup(int groupID) {
+  int userID = WinSockClient::getInstance()->getUserId();
+  QJsonObject request;
+  request["action"] = "requestJoinGroup";
+  request["groupID"] = groupID;
+  request["userID"] = userID;
+  WinSockClient::getInstance()->sendMessage(request);
+}
+
+void GroupHandlers::getGroupRequests(int groupID) {
+  QJsonObject request;
+  request["action"] = "getGroupRequests";
+  request["groupID"] = groupID;
+  WinSockClient::getInstance()->sendMessage(request);
+}
+
+void GroupHandlers::respondToRequest(int requestID, int status) {
+  QJsonObject request;
+  request["action"] = "respondToRequest";
+  request["requestID"] = requestID;
+  request["status"] = status;
+  WinSockClient::getInstance()->sendMessage(request);
+}
+
+QVariantList GroupHandlers::allGroups() const { return m_allGroups; }
+QVariantList GroupHandlers::groupRequests() const { return m_groupRequests; }
+QString GroupHandlers::exploreMessage() const { return m_exploreMessage; }
+
+void GroupHandlers::onExploreGroupsReceived(const QJsonObject &data) {
+  // Capture message regardless of success
+  m_exploreMessage = data["message"].toString();
+  if (m_exploreMessage.isEmpty())
+    m_exploreMessage = "Unknown status";
+  emit exploreMessageChanged();
+
+  if (data["success"].toBool()) {
+    m_allGroups.clear();
+    QJsonArray groups = data["groups"].toArray();
+    for (const auto &val : groups) {
+      QJsonObject g = val.toObject();
+      QVariantMap gm;
+      gm["groupID"] = g["groupID"].toInt();
+      gm["groupName"] = g["groupName"].toString();
+      m_allGroups.append(gm);
+    }
+    emit allGroupsChanged();
+  } else {
+    // Clear list on failure? Or keep old?
+    m_allGroups.clear();
+    emit allGroupsChanged();
+  }
+}
+
+void GroupHandlers::onRequestJoinReceived(const QJsonObject &data) {
+  bool success = data["success"].toBool();
+  QString message =
+      success ? "Yêu cầu đã được gửi." : data["message"].toString();
+  emit requestJoinFinished(success, message);
+  if (success) {
+    // Refresh explore list? User might still see usage.
+    exploreGroups();
+  }
+}
+
+void GroupHandlers::onGroupRequestsReceived(const QJsonObject &data) {
+  if (data["success"].toBool()) {
+    m_groupRequests.clear();
+    QJsonArray reqs = data["requests"].toArray();
+    for (const auto &val : reqs) {
+      QJsonObject r = val.toObject();
+      QVariantMap rm;
+      rm["requestID"] = r["requestID"].toInt();
+      rm["userID"] = r["userID"].toInt();
+      rm["username"] = r["username"].toString();
+      rm["createdAt"] = r["createdAt"].toString();
+      m_groupRequests.append(rm);
+    }
+    emit groupRequestsChanged();
+  }
+}
+
+void GroupHandlers::onRespondToRequestReceived(const QJsonObject &data) {
+  if (data["success"].toBool()) {
+    // Refresh request list? Need groupID.
+    // For now, simplify: Caller reloads if needed or we deduce groupID.
+    // Or just let the UI handle it.
+    qDebug() << "Respond success";
+  }
+}

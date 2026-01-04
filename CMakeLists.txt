@@ -27,6 +27,7 @@ qt_add_qml_module(appClient
         SOURCES
         QML_FILES Home.qml
         QML_FILES RenameDialog.qml
+        QML_FILES MoveToDialog.qml
         SOURCES friendhandlers.h friendhandlers.cpp
         SOURCES grouphandlers.h grouphandlers.cpp
         SOURCES filesharinghandlers.h filesharinghandlers.cpp
