@@ -26,9 +26,9 @@ qt_add_qml_module(appClient
         SOURCES
         SOURCES
         QML_FILES Home.qml
-        SOURCES
-        SOURCES
         SOURCES friendhandlers.h friendhandlers.cpp
+        SOURCES grouphandlers.h grouphandlers.cpp
+
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

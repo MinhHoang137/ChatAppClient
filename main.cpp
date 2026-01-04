@@ -1,29 +1,31 @@
+#include "friendhandlers.h"
+#include "grouphandlers.h"
+#include "header.h"
+#include "winsockclient.h"
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
-#include "friendhandlers.h"
-#include "winsockclient.h"
-#include "header.h"
 
-int main(int argc, char *argv[])
-{
-    QGuiApplication app(argc, argv);
 
-    // Khởi tạo file log cho Client
-    initClientLog();
+int main(int argc, char *argv[]) {
+  QGuiApplication app(argc, argv);
 
-    QQmlApplicationEngine engine;
+  // Khởi tạo file log cho Client
+  initClientLog();
 
-    engine.rootContext()->setContextProperty("winSockClient", WinSockClient::getInstance());
-    engine.rootContext()->setContextProperty("friendHandlers", FriendHandlers::getInstance());
+  QQmlApplicationEngine engine;
 
-    QObject::connect(
-        &engine,
-        &QQmlApplicationEngine::objectCreationFailed,
-        &app,
-        []() { QCoreApplication::exit(-1); },
-        Qt::QueuedConnection);
-    engine.loadFromModule("Client", "Main");
+  engine.rootContext()->setContextProperty("winSockClient",
+                                           WinSockClient::getInstance());
+  engine.rootContext()->setContextProperty("friendHandlers",
+                                           FriendHandlers::getInstance());
+  engine.rootContext()->setContextProperty("groupHandlers",
+                                           GroupHandlers::getInstance());
 
-    return app.exec();
+  QObject::connect(
+      &engine, &QQmlApplicationEngine::objectCreationFailed, &app,
+      []() { QCoreApplication::exit(-1); }, Qt::QueuedConnection);
+  engine.loadFromModule("Client", "Main");
+
+  return app.exec();
 }

@@ -85,7 +85,7 @@ Page {
                         } else if (currentIndex === 2) {
                             friendHandlers.fetchFriendRequests()
                         } else if (currentIndex === 3) {
-                            friendHandlers.fetchGroups()
+                            groupHandlers.fetchGroups()
                             // Prefetch lists used by Manage Members dialog
                             friendHandlers.fetchFriends()
                             friendHandlers.fetchNonFriendUsers()
@@ -267,9 +267,9 @@ Page {
                                 highlighted: true
                                 onClicked: {
                                     if (newGroupName.text.trim() !== "") {
-                                        friendHandlers.createGroup(newGroupName.text)
+                                        groupHandlers.createGroup(newGroupName.text)
                                         newGroupName.text = ""
-                                        friendHandlers.fetchGroups()
+                                        groupHandlers.fetchGroups()
                                     }
                                 }
                             }
@@ -284,21 +284,21 @@ Page {
                                 onClicked: {
                                     friendHandlers.fetchFriends()
                                     friendHandlers.fetchNonFriendUsers()
-                                    friendHandlers.loadGroupMembers(winSockClient.getGroupId())
+                                    groupHandlers.loadGroupMembers(winSockClient.getGroupId())
                                     groupMemberDialog.open()
                                 }
                             }
                             Item { Layout.fillWidth: true }
                             Button {
                                 text: "Làm mới danh sách"
-                                onClicked: friendHandlers.fetchGroups()
+                                onClicked: groupHandlers.fetchGroups()
                             }
                         }
 
                         ListView {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            model: friendHandlers.groups
+                            model: groupHandlers.groups
                             clip: true
                             delegate: ItemDelegate {
                                 width: parent.width
@@ -310,8 +310,8 @@ Page {
                                     winSockClient.setTargetId(0)
                                     selectedUserName = modelData.groupName
                                     selectedUserStatus = -1
-                                    friendHandlers.loadGroupMessages(modelData.groupID)
-                                    friendHandlers.loadGroupMembers(modelData.groupID)
+                                    groupHandlers.loadGroupMessages(modelData.groupID)
+                                    groupHandlers.loadGroupMembers(modelData.groupID)
                                 }
                                 RowLayout {
                                     anchors.fill: parent
@@ -330,8 +330,8 @@ Page {
                                     Button {
                                         text: "Rời nhóm"
                                         onClicked: {
-                                            friendHandlers.leaveGroup(modelData.groupID)
-                                            friendHandlers.fetchGroups()
+                                            groupHandlers.leaveGroup(modelData.groupID)
+                                            groupHandlers.fetchGroups()
                                         }
                                     }
                                 }
@@ -406,7 +406,7 @@ Page {
                         anchors.fill: parent
                         anchors.margins: 10
                         clip: true
-                        model: winSockClient.groupId !== 0 ? friendHandlers.groupMessages : friendHandlers.messages
+                        model: winSockClient.groupId !== 0 ? groupHandlers.groupMessages : friendHandlers.messages
                         spacing: 10
                         enabled: winSockClient.isConnected
                         
@@ -508,7 +508,7 @@ Page {
                             onClicked: {
                                 if (messageInput.text.trim() !== "") {
                                     if (winSockClient.groupId !== 0) {
-                                        friendHandlers.sendGroupMessage(messageInput.text)
+                                        groupHandlers.sendGroupMessage(messageInput.text)
                                     } else {
                                         friendHandlers.sendMessage(messageInput.text)
                                     }
@@ -629,7 +629,7 @@ Page {
                     onClicked: {
                         friendHandlers.fetchFriends();
                         friendHandlers.fetchNonFriendUsers();
-                        friendHandlers.loadGroupMembers(winSockClient.getGroupId());
+                        groupHandlers.loadGroupMembers(winSockClient.getGroupId());
                         groupMemberDialog.open();
                     }
                 }
@@ -651,11 +651,11 @@ Page {
 
         onVisibleChanged: {
             if (visible) {
-                friendHandlers.fetchGroups()
+                groupHandlers.fetchGroups()
                 friendHandlers.fetchFriends()
                 friendHandlers.fetchNonFriendUsers()
                 if (winSockClient.groupId !== 0) {
-                    friendHandlers.loadGroupMembers(winSockClient.getGroupId())
+                    groupHandlers.loadGroupMembers(winSockClient.getGroupId())
                 }
             }
         }
@@ -696,7 +696,7 @@ Page {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         clip: true
-                        model: friendHandlers.groups
+                        model: groupHandlers.groups
                         currentIndex: -1
                         delegate: ItemDelegate {
                             width: dialogGroupList.width
@@ -704,7 +704,7 @@ Page {
                             highlighted: winSockClient.groupId === modelData.groupID
                             onClicked: {
                                 winSockClient.setGroupId(modelData.groupID)
-                                friendHandlers.loadGroupMembers(modelData.groupID)
+                                groupHandlers.loadGroupMembers(modelData.groupID)
                             }
                             RowLayout {
                                 anchors.fill: parent
@@ -728,8 +728,8 @@ Page {
 
                         Label {
                             anchors.centerIn: parent
-                            text: friendHandlers.groups.length === 0 ? "Chưa có nhóm" : ""
-                            visible: friendHandlers.groups.length === 0
+                            text: groupHandlers.groups.length === 0 ? "Chưa có nhóm" : ""
+                            visible: groupHandlers.groups.length === 0
                             color: "gray"
                         }
                     }
@@ -787,7 +787,7 @@ Page {
                                 text: "Thêm"
                                 enabled: winSockClient.isConnected && winSockClient.groupId !== 0
                                 onClicked: {
-                                    friendHandlers.addUserToGroup(winSockClient.getGroupId(), modelData.userID)
+                                    groupHandlers.addUserToGroup(winSockClient.getGroupId(), modelData.userID)
                                 }
                             }
                         }
