@@ -1,3 +1,4 @@
+#include "filesharinghandlers.h"
 #include "friendhandlers.h"
 #include "grouphandlers.h"
 #include "header.h"
@@ -5,7 +6,6 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
-
 
 int main(int argc, char *argv[]) {
   QGuiApplication app(argc, argv);
@@ -21,6 +21,8 @@ int main(int argc, char *argv[]) {
                                            FriendHandlers::getInstance());
   engine.rootContext()->setContextProperty("groupHandlers",
                                            GroupHandlers::getInstance());
+  engine.rootContext()->setContextProperty("fileSharingHandlers",
+                                           FileSharingHandlers::getInstance());
 
   QObject::connect(
       &engine, &QQmlApplicationEngine::objectCreationFailed, &app,

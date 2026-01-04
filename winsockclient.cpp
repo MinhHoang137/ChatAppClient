@@ -1,12 +1,12 @@
 #include "winsockclient.h"
 #include "authentication.h"
+#include "filesharinghandlers.h"
 #include "friendhandlers.h"
 #include "grouphandlers.h"
 #include "header.h"
 #include <QDebug>
 #include <QJsonDocument>
 #include <QJsonObject>
-
 
 WinSockClient *WinSockClient::m_instance = nullptr;
 
@@ -79,6 +79,27 @@ WinSockClient::WinSockClient(QObject *parent)
   };
   m_signalMap["getGroupMembers"] = [](const QJsonObject &data) {
     emit GroupHandlers::getInstance()->groupMembersReceived(data);
+  };
+
+  // File Sharing signals
+  auto fsHandler = FileSharingHandlers::getInstance();
+  m_signalMap["listFiles"] = [fsHandler](const QJsonObject &data) {
+    emit fsHandler->listFilesReceived(data);
+  };
+  m_signalMap["uploadChunk"] = [fsHandler](const QJsonObject &data) {
+    emit fsHandler->uploadChunkAck(data);
+  };
+  m_signalMap["downloadChunk"] = [fsHandler](const QJsonObject &data) {
+    emit fsHandler->downloadChunkReceived(data);
+  };
+  m_signalMap["createFolder"] = [fsHandler](const QJsonObject &data) {
+    emit fsHandler->operationResultReceived(data);
+  };
+  m_signalMap["deleteItem"] = [fsHandler](const QJsonObject &data) {
+    emit fsHandler->operationResultReceived(data);
+  };
+  m_signalMap["renameItem"] = [fsHandler](const QJsonObject &data) {
+    emit fsHandler->operationResultReceived(data);
   };
 }
 

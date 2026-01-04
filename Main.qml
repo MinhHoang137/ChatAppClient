@@ -22,6 +22,7 @@ Window {
     Component {
         id: homePage
         Home {
+            onLogout: stackView.pop()
         }
     }
 

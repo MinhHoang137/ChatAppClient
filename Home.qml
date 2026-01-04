@@ -1,12 +1,15 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Dialogs as QD
 import Client
 
 Page {
     property string username: ""
     property string selectedUserName: "Chưa chọn"
     property int selectedUserStatus: -1 // -1: none, 0: offline, 1: online
+    
+    signal logout()
 
     header: ToolBar {
         background: Rectangle {
@@ -22,6 +25,27 @@ Page {
                 Layout.leftMargin: 20
             }
             Item { Layout.fillWidth: true }
+
+            Button {
+                text: "Đăng xuất"
+                flat: true
+                contentItem: Text {
+                    text: parent.text
+                    font: parent.font
+                    color: "white"
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                background: Rectangle {
+                    color: parent.down ? "#005a9e" : (parent.hovered ? "#006cc1" : "transparent")
+                }
+                onClicked: {
+                    winSockClient.setUserId(0)
+                    winSockClient.setGroupId(0)
+                    winSockClient.setTargetId(0)
+                    logout()
+                }
+            }
         }
     }
 
@@ -51,7 +75,7 @@ Page {
 
         // --- LEFT SIDEBAR (Danh sách) ---
         Rectangle {
-            Layout.preferredWidth: 300
+            Layout.preferredWidth: 360
             Layout.fillHeight: true
             color: "#f3f2f1"
             border.color: "#e1dfdd"
@@ -70,6 +94,7 @@ Page {
                     TabButton { text: "Người lạ"; width: implicitWidth }
                     TabButton { text: "Yêu cầu"; width: implicitWidth }
                     TabButton { text: "Nhóm"; width: implicitWidth }
+                    TabButton { text: "Chia sẻ file"; width: implicitWidth }
 
                     Component.onCompleted: {
                         if (currentIndex === 0) {
@@ -89,6 +114,11 @@ Page {
                             // Prefetch lists used by Manage Members dialog
                             friendHandlers.fetchFriends()
                             friendHandlers.fetchNonFriendUsers()
+                        } else if (currentIndex === 4) {
+                            groupHandlers.fetchGroups()
+                            if (winSockClient.groupId !== 0) {
+                                fileSharingHandlers.listFiles(winSockClient.getGroupId(), "")
+                            }
                         }
                     }
                 }
@@ -290,7 +320,7 @@ Page {
                             }
                             Item { Layout.fillWidth: true }
                             Button {
-                                text: "Làm mới danh sách"
+                                text: "Làm mới"
                                 onClicked: groupHandlers.fetchGroups()
                             }
                         }
@@ -312,6 +342,7 @@ Page {
                                     selectedUserStatus = -1
                                     groupHandlers.loadGroupMessages(modelData.groupID)
                                     groupHandlers.loadGroupMembers(modelData.groupID)
+                                    fileSharingHandlers.listFiles(modelData.groupID, "")
                                 }
                                 RowLayout {
                                     anchors.fill: parent
@@ -337,6 +368,198 @@ Page {
                                 }
                             }
                             ScrollIndicator.vertical: ScrollIndicator { }
+                        }
+                    }
+
+                    // Tab 5: Chia sẻ file
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        spacing: 8
+                        visible: contactTabBar.currentIndex === 4
+
+                        // Breadcrumb / Path
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Label {
+                                text: "Đường dẫn:"
+                                font.bold: true
+                            }
+                            Label {
+                                text: fileSharingHandlers.currentPath === "" ? "/" : "/" + fileSharingHandlers.currentPath
+                                Layout.fillWidth: true
+                                elide: Text.ElideMiddle
+                            }
+                            Button {
+                                text: "Lên"
+                                enabled: fileSharingHandlers.currentPath !== ""
+                                onClicked: {
+                                    // Calculate parent path
+                                    var path = fileSharingHandlers.currentPath
+                                    var lastSlash = path.lastIndexOf('/')
+                                    if (lastSlash !== -1) {
+                                        path = path.substring(0, lastSlash)
+                                    } else {
+                                        path = ""
+                                    }
+                                    fileSharingHandlers.listFiles(winSockClient.getGroupId(), path)
+                                }
+                            }
+                        }
+
+                        // Toolbar
+                        RowLayout {
+                             Layout.fillWidth: true
+                             spacing: 8
+                             enabled: winSockClient.groupId !== 0
+
+                             Button {
+                                 text: "Tải lên"
+                                 onClicked: fileFileDialog.open()
+                             }
+                             Button {
+                                 text: "Tạo thư mục"
+                                 onClicked: createFolderDialog.open()
+                             }
+                             Button {
+                                 text: "Làm mới"
+                                 onClicked: fileSharingHandlers.listFiles(winSockClient.getGroupId(), fileSharingHandlers.currentPath)
+                             }
+                             
+                             Button {
+                                 text: "Dán"
+                                 visible: fileSharingHandlers.clipboardAction !== ""
+                                 onClicked: {
+                                    if (fileSharingHandlers.clipboardAction === "copy") {
+                                        fileSharingHandlers.copyItem(winSockClient.getGroupId(), fileSharingHandlers.clipboardPath, fileSharingHandlers.currentPath + "/" + fileSharingHandlers.clipboardPath.split('/').pop())
+                                    } else if (fileSharingHandlers.clipboardAction === "move") {
+                                        fileSharingHandlers.moveItem(winSockClient.getGroupId(), fileSharingHandlers.clipboardPath, fileSharingHandlers.currentPath + "/" + fileSharingHandlers.clipboardPath.split('/').pop())
+                                    }
+                                    // Should refresh automatically or wait for result
+                                    // fileSharingHandlers.listFiles(winSockClient.getGroupId(), fileSharingHandlers.currentPath)
+                                 }
+                             }
+
+                             Item { Layout.fillWidth: true }
+                        }
+                        
+                        Label {
+                             text: "Chọn nhóm từ danh sách để xem file"
+                             visible: winSockClient.groupId === 0
+                             color: "red"
+                             font.italic: true
+                             Layout.alignment: Qt.AlignHCenter
+                        }
+
+                        // File List
+                        ListView {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            clip: true
+                            model: winSockClient.groupId !== 0 ? fileSharingHandlers.files : []
+                            delegate: ItemDelegate {
+                                width: parent.width
+                                height: 40
+                                
+                                MouseArea {
+                                    anchors.fill: parent
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                    onClicked: (mouse) => {
+                                        if (mouse.button === Qt.RightButton) {
+                                           contextMenu.popup()
+                                        } else {
+                                            if (modelData.isDir) {
+                                                var newPath = fileSharingHandlers.currentPath === "" ? modelData.name : fileSharingHandlers.currentPath + "/" + modelData.name
+                                                fileSharingHandlers.listFiles(winSockClient.getGroupId(), newPath)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Menu {
+                                    id: contextMenu
+                                    MenuItem {
+                                        text: "Đổi tên"
+                                        onTriggered: {
+                                            renameDialog.currentName = modelData.name
+                                            renameDialog.currentPath = fileSharingHandlers.currentPath
+                                            renameDialog.open()
+                                        }
+                                    }
+                                    MenuItem {
+                                        text: "Sao chép"
+                                        onTriggered: {
+                                            var path = fileSharingHandlers.currentPath === "" ? modelData.name : fileSharingHandlers.currentPath + "/" + modelData.name
+                                            fileSharingHandlers.setClipboard("copy", path)
+                                        }
+                                    }
+                                    MenuItem {
+                                        text: "Cắt"
+                                        onTriggered: {
+                                            var path = fileSharingHandlers.currentPath === "" ? modelData.name : fileSharingHandlers.currentPath + "/" + modelData.name
+                                            fileSharingHandlers.setClipboard("move", path)
+                                        }
+                                    }
+                                    MenuItem {
+                                        text: "Xóa"
+                                        onTriggered: {
+                                            fileSharingHandlers.deleteItem(winSockClient.getGroupId(), fileSharingHandlers.currentPath, modelData.name, modelData.isDir)
+                                            // Auto refresh likely triggered by operationResult or manual
+                                            fileSharingHandlers.listFiles(winSockClient.getGroupId(), fileSharingHandlers.currentPath)
+                                        }
+                                    }
+                                }
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 5
+                                    spacing: 10
+
+                                    Image {
+                                        source: modelData.isDir ? "qrc:/icons/folder.png" : "qrc:/icons/file.png"
+                                        Layout.preferredWidth: 24
+                                        Layout.preferredHeight: 24
+                                        // Fallback text if icon missing
+                                        Text {
+                                            visible: parent.status !== Image.Ready
+                                            text: modelData.isDir ? "[D]" : "[F]"
+                                            anchors.centerIn: parent
+                                        }
+                                    }
+
+                                    Label {
+                                        text: modelData.name
+                                        Layout.fillWidth: true
+                                        elide: Text.ElideRight
+                                        font.bold: modelData.isDir
+                                    }
+
+                                    Label {
+                                        text: modelData.isDir ? "" : (modelData.size + " B")
+                                        Layout.preferredWidth: 80
+                                        horizontalAlignment: Text.AlignRight
+                                    }
+
+                                    Button {
+                                        text: "Tải xuống"
+                                        visible: !modelData.isDir
+                                        onClicked: {
+                                            saveFileDialog.targetFileName = modelData.name
+                                            saveFileDialog.open()
+                                        }
+                                    }
+                                }
+
+                                onClicked: {
+                                    if (modelData.isDir) {
+                                        var newPath = fileSharingHandlers.currentPath
+                                        if (newPath !== "") newPath += "/"
+                                        newPath += modelData.name
+                                        fileSharingHandlers.listFiles(winSockClient.getGroupId(), newPath)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -639,6 +862,47 @@ Page {
         }
     }
 
+    // File Dialogs
+    QD.FileDialog {
+        id: fileFileDialog
+        title: "Chọn file để tải lên"
+        fileMode: QD.FileDialog.OpenFile
+        onAccepted: {
+            fileSharingHandlers.uploadFile(winSockClient.getGroupId(), fileSharingHandlers.currentPath, selectedFile)
+        }
+    }
+
+    QD.FileDialog {
+        id: saveFileDialog
+        title: "Lưu file"
+        fileMode: QD.FileDialog.SaveFile
+        property string targetFileName: ""
+        onAccepted: {
+             fileSharingHandlers.downloadFile(winSockClient.getGroupId(), fileSharingHandlers.currentPath, targetFileName, selectedFile)
+        }
+    }
+
+    Dialog {
+        id: createFolderDialog
+        title: "Tạo thư mục mới"
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        
+        ColumnLayout {
+            TextField {
+                id: newFolderName
+                placeholderText: "Tên thư mục"
+            }
+        }
+        onAccepted: {
+            if (newFolderName.text !== "") {
+                fileSharingHandlers.createFolder(winSockClient.getGroupId(), fileSharingHandlers.currentPath, newFolderName.text)
+                newFolderName.text = ""
+                // Refresh
+                fileSharingHandlers.listFiles(winSockClient.getGroupId(), fileSharingHandlers.currentPath)
+            }
+        }
+    }
+
     // Dialog quản lý thành viên nhóm
     Dialog {
         id: groupMemberDialog
@@ -815,7 +1079,7 @@ Page {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 180
                     clip: true
-                    model: friendHandlers.groupMembers
+                    model: groupHandlers.groupMembers
                     delegate: ItemDelegate {
                         width: parent.width
                         height: 50
@@ -828,7 +1092,7 @@ Page {
                                 text: "Xóa"
                                 enabled: winSockClient.isConnected && winSockClient.groupId !== 0
                                 onClicked: {
-                                    friendHandlers.removeUserFromGroup(winSockClient.getGroupId(), modelData.userID)
+                                    groupHandlers.removeUserFromGroup(winSockClient.getGroupId(), modelData.userID)
                                 }
                             }
                         }
@@ -836,11 +1100,36 @@ Page {
                     ScrollIndicator.vertical: ScrollIndicator {}
                     Label {
                         anchors.centerIn: parent
-                        text: friendHandlers.groupMembers.length === 0 ? "Nhóm chưa có thành viên hoặc đang tải" : ""
-                        visible: friendHandlers.groupMembers.length === 0
+                        text: groupHandlers.groupMembers.length === 0 ? "Nhóm chưa có thành viên hoặc đang tải" : ""
+                        visible: groupHandlers.groupMembers.length === 0
                         color: "gray"
                     }
                 }
+            }
+        }
+    }
+
+    RenameDialog {
+        id: renameDialog
+        anchors.centerIn: parent
+        onRenameConfirmed: (oldName, newName) => {
+            fileSharingHandlers.renameItem(winSockClient.getGroupId(), fileSharingHandlers.currentPath, oldName, newName)
+            fileSharingHandlers.listFiles(winSockClient.getGroupId(), fileSharingHandlers.currentPath)
+        }
+    }
+
+    QD.MessageDialog {
+        id: errorDialog
+        title: "Thông báo"
+        buttons: QD.MessageDialog.Ok
+    }
+
+    Connections {
+        target: fileSharingHandlers
+        function onFileOperationFinished(success, message) {
+            if (!success) {
+                errorDialog.text = message
+                errorDialog.open()
             }
         }
     }
